@@ -491,11 +491,30 @@ liveness/readiness health checks.
 
 *Schema* — initial migration creating the `audit.AuditTrail` table with three purpose-built indexes.
 
+**Increment 1a — Integration suite, Docker and CI** *(CI fully green: 171 tests)*
+
+Container-backed suite proving tenant isolation against real SQL Server, Docker Compose stack,
+multi-stage container image, and a three-job GitHub Actions pipeline.
+
+Three real defects were caught by CI rather than by review, each on a seam local builds cannot see:
+
+| Defect | Why local builds missed it |
+| --- | --- |
+| `appsettings.json` connection string overrode the test host | The committed value happened to be right on a dev machine |
+| `ConfigureAppConfiguration` applies after service registration | Only fails where the injected value is the *only* source |
+| Dockerfile omitted `.editorconfig` | The image built under a stricter analyzer ruleset than every other build |
+
+**Increment 2 (domain layer) — Identity** *(93 domain tests)*
+
+`User`, `Role`, `RefreshToken`, `EmailAddress`, `PasswordHash` and the permission catalogue, with
+time-boxed lockout, security-stamp rotation on any privilege change, and refresh-token rotation
+with reuse detection that revokes the whole chain.
+
 ### Planned
 
 | # | Increment | Delivers |
 | --- | --- | --- |
-| 2 | Identity | Registration, login, refresh tokens, RBAC, permission-based authorization |
+| 2b | Identity (application + API) | Registration, login, JWT issuance, refresh endpoint, permission policies |
 | 3 | Organizations | Tenants, districts, membership, invitations |
 | 4 | Assets | Asset hierarchy, spatial data, condition tracking, pagination and filtering |
 | 5 | Incidents | Natural-language intake with Claude extraction, triage, deduplication |
