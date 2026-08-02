@@ -1,0 +1,44 @@
+<Project>
+
+  <!--
+    Solution-wide compiler settings. Applied to every project automatically by MSBuild
+    directory traversal, so individual .csproj files stay small and declarative.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <!--
+      Warnings are errors in CI and locally. A codebase that tolerates warnings
+      accumulates them until they are collectively ignored; there is no middle state.
+    -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+
+    <!-- Deterministic builds so CI artifacts are byte-comparable. -->
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- CS1591: missing XML comment. Required on public API surface only (see .editorconfig). -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Product>Aegis Infrastructure Management Platform</Product>
+    <Company>Aegis</Company>
+    <Authors>Aegis Engineering</Authors>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+
+  <!-- Test projects: relax documentation and enable the standard test harness. -->
+  <PropertyGroup Condition="$(MSBuildProjectName.EndsWith('Tests'))">
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+</Project>

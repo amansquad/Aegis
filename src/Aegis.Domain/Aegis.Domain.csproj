@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Aegis.Domain</RootNamespace>
+  </PropertyGroup>
+
+  <!--
+    ARCHITECTURAL INVARIANT: this project declares no PackageReference and no ProjectReference.
+
+    The domain model expresses the business — assets, incidents, work orders, maintenance
+    schedules — and must remain expressible without EF Core, MediatR, ASP.NET Core, or any other
+    library. A package needed here is evidence that a technical concern has leaked inward and
+    belongs in Application or Infrastructure instead.
+
+    Enforced by an executable test rather than by convention:
+    tests/Aegis.Domain.UnitTests/Architecture/DependencyTests.cs
+  -->
+
+</Project>

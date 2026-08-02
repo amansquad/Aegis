@@ -1,0 +1,99 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = crlf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{json,yml,yaml,ts,tsx,js,jsx,css,md}]
+indent_size = 2
+
+[*.cs]
+indent_size = 4
+
+#### .NET code style ####
+
+# Usings
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+csharp_using_directive_placement = outside_namespace:warning
+
+# File-scoped namespaces — one less level of indentation across the whole codebase.
+csharp_style_namespace_declarations = file_scoped:error
+
+# Modern language features
+csharp_style_var_for_built_in_types = false:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_expression_bodied_methods = when_on_single_line:suggestion
+csharp_style_expression_bodied_properties = true:suggestion
+csharp_style_prefer_primary_constructors = true:suggestion
+csharp_prefer_braces = true:warning
+csharp_style_prefer_pattern_matching = true:suggestion
+csharp_style_prefer_switch_expression = true:suggestion
+csharp_style_throw_expression = true:suggestion
+
+# Nullability discipline
+dotnet_diagnostic.CS8600.severity = error
+dotnet_diagnostic.CS8602.severity = error
+dotnet_diagnostic.CS8603.severity = error
+dotnet_diagnostic.CS8618.severity = error
+
+# Readonly by default
+dotnet_style_readonly_field = true:warning
+dotnet_style_require_accessibility_modifiers = for_non_interface_members:warning
+
+#### Naming ####
+
+dotnet_naming_rule.private_fields_underscore.severity = warning
+dotnet_naming_rule.private_fields_underscore.symbols = private_fields
+dotnet_naming_rule.private_fields_underscore.style = underscore_camel_case
+
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private
+
+dotnet_naming_style.underscore_camel_case.required_prefix = _
+dotnet_naming_style.underscore_camel_case.capitalization = camel_case
+
+dotnet_naming_rule.interfaces_start_with_i.severity = error
+dotnet_naming_rule.interfaces_start_with_i.symbols = interfaces
+dotnet_naming_rule.interfaces_start_with_i.style = begins_with_i
+
+dotnet_naming_symbols.interfaces.applicable_kinds = interface
+dotnet_naming_style.begins_with_i.required_prefix = I
+dotnet_naming_style.begins_with_i.capitalization = pascal_case
+
+#### Async correctness — these are the bugs that reach production ####
+
+# Do not use blocking calls in async methods
+dotnet_diagnostic.CA1849.severity = error
+# ConfigureAwait is not required in ASP.NET Core (no synchronisation context)
+dotnet_diagnostic.CA2007.severity = none
+# Forward CancellationToken to methods that take one
+dotnet_diagnostic.CA2016.severity = error
+# Async method lacking await / should return Task
+dotnet_diagnostic.CS1998.severity = warning
+
+#### Security ####
+dotnet_diagnostic.CA2100.severity = error   # SQL injection via string concatenation
+dotnet_diagnostic.CA5350.severity = error   # weak crypto
+dotnet_diagnostic.CA5351.severity = error   # broken crypto
+
+#### Pragmatic relaxations ####
+
+# CA1716 flags type names that collide with keywords in *other* .NET languages. It objects to
+# `Error` (a Visual Basic keyword). Aegis is C#-only and `Result`/`Error` is the established
+# vocabulary of this pattern; renaming to `ErrorDetail` would make every call site worse to
+# satisfy a VB consumer that will never exist.
+dotnet_diagnostic.CA1716.severity = none
+
+dotnet_diagnostic.CA1848.severity = none    # LoggerMessage source-gen: not worth it everywhere
+dotnet_diagnostic.CA1062.severity = none    # nullable reference types already cover this
+dotnet_diagnostic.CA1707.severity = none    # underscores in test method names are intentional
+
+# Test projects
+[tests/**/*.cs]
+dotnet_diagnostic.CA1861.severity = none
+dotnet_diagnostic.CA1707.severity = none

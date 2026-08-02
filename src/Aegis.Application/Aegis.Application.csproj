@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Aegis.Application</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Aegis.Domain\Aegis.Domain.csproj" />
+  </ItemGroup>
+
+  <!--
+    Orchestration primitives and abstractions only. Note what is absent: no EF Core, no Redis
+    client, no HTTP client, no ASP.NET Core. Application declares the ports it needs
+    (IAegisDbContext, ICacheService, IAiCompletionService) and Infrastructure supplies the
+    adapters. That inversion is what lets a handler be unit-tested without a database.
+  -->
+  <ItemGroup>
+    <PackageReference Include="MediatR" />
+    <PackageReference Include="FluentValidation" />
+    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" />
+    <PackageReference Include="Mapster" />
+    <PackageReference Include="Mapster.DependencyInjection" />
+  </ItemGroup>
+
+</Project>

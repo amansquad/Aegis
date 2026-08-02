@@ -1,0 +1,37 @@
+# Normalise line endings in the repository to LF, and check out native endings per platform.
+# Without this, a Windows contributor and a Linux CI runner produce diffs that touch every line.
+* text=auto eol=lf
+
+# Windows-only tooling that genuinely requires CRLF.
+*.sln       text eol=crlf
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+*.ps1       text eol=crlf
+
+# Shell scripts must keep LF or they fail to execute inside Linux containers.
+*.sh        text eol=lf
+Dockerfile  text eol=lf
+*.dockerfile text eol=lf
+
+# Binary assets: never diff, never normalise.
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.webp      binary
+*.pdf       binary
+*.xlsx      binary
+*.woff      binary
+*.woff2     binary
+*.ttf       binary
+*.otf       binary
+*.snk       binary
+*.pfx       binary
+
+# Generated files: collapse in pull request diffs to keep reviews readable.
+package-lock.json  linguist-generated=true -diff
+yarn.lock          linguist-generated=true -diff
+pnpm-lock.yaml     linguist-generated=true -diff
+*.Designer.cs      linguist-generated=true
+Migrations/*.Designer.cs linguist-generated=true -diff
