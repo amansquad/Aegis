@@ -41,6 +41,25 @@ public sealed record RoleAssignedToUser(Guid UserId, Guid OrganizationId, Guid R
 /// <summary>Raised when a role is withdrawn from a user.</summary>
 public sealed record RoleRemovedFromUser(Guid UserId, Guid OrganizationId, Guid RoleId) : DomainEvent;
 
+/// <summary>Raised when an administrator invites someone to join the organization.</summary>
+/// <remarks>
+/// Carries no token. The event is persisted in the audit trail and logged, and a credential that
+/// grants account creation inside a tenant must not travel through either.
+/// </remarks>
+public sealed record UserInvited(
+    Guid InvitationId,
+    Guid OrganizationId,
+    string Email,
+    Guid InvitedBy,
+    DateTimeOffset ExpiresOnUtc) : DomainEvent;
+
+/// <summary>Raised when an invitation is accepted and the account created.</summary>
+public sealed record InvitationAccepted(
+    Guid InvitationId,
+    Guid OrganizationId,
+    Guid UserId,
+    string Email) : DomainEvent;
+
 /// <summary>Raised when an account is deactivated.</summary>
 public sealed record UserDeactivated(Guid UserId, Guid OrganizationId, string? Reason) : DomainEvent;
 

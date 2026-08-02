@@ -1,5 +1,8 @@
 using Aegis.Application.Abstractions.Caching;
 using Aegis.Application.Abstractions.Events;
+using Aegis.Application.Abstractions.Notifications;
+using Aegis.Application.Identity.Commands;
+using Aegis.Infrastructure.Notifications;
 using Aegis.Application.Abstractions.Multitenancy;
 using Aegis.Application.Abstractions.Persistence;
 using Aegis.Application.Abstractions.Requests;
@@ -38,6 +41,7 @@ public static class DependencyInjection
         services.AddPersistence(configuration);
         services.AddCaching(configuration);
         services.AddSecurity(configuration);
+        services.AddNotifications(configuration);
 
         return services;
     }
@@ -154,6 +158,28 @@ public static class DependencyInjection
         });
 
         services.AddScoped<IAegisDbContext>(sp => sp.GetRequiredService<AegisDbContext>());
+
+        return services;
+    }
+
+    /// <summary>Registers outbound notification adapters.</summary>
+    private static IServiceCollection AddNotifications(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        services
+            .AddOptions<InvitationOptions>()
+            .Bind(configuration.GetSection(InvitationOptions.SectionName))
+            .Validate(
+                o => o.LifetimeDays is > 0 and <= 30,
+                "Invitations:LifetimeDays must be between 1 and 30. An invitation link is a " +
+                "standing credential, and one that never expires is a permanent way into the tenant.")
+            .ValidateOnStart();
+
+        // The only implementation writes to the log and refuses to start in production, so a
+        // deployment without a real mail adapter fails loudly rather than silently swallowing
+        // every invitation.
+        services.AddSingleton<IEmailSender, LoggingEmailSender>();
 
         return services;
     }

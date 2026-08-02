@@ -1,5 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Aegis.Application.Identity.Commands;
 using Aegis.Application.Identity.Contracts;
 using Aegis.Domain.Organizations;
@@ -54,6 +56,20 @@ public abstract class IntegrationTestBase(AegisWebApplicationFactory factory)
 {
     /// <summary>The container-backed host under test.</summary>
     protected AegisWebApplicationFactory Factory { get; } = factory;
+
+    /// <summary>
+    /// Serializer options mirroring the API's own.
+    /// </summary>
+    /// <remarks>
+    /// The API writes enums as strings, so a client deserialising with the defaults fails on the
+    /// first enum-valued field. Mirroring the server's configuration here also means a change to it
+    /// breaks these tests, which is the correct place for that mismatch to surface — a real client
+    /// would hit it too.
+    /// </remarks>
+    protected static JsonSerializerOptions JsonOptions { get; } = new(JsonSerializerDefaults.Web)
+    {
+        Converters = { new JsonStringEnumConverter() },
+    };
 
     /// <summary>Creates a client that sends no credentials.</summary>
     protected HttpClient CreateAnonymousClient() => Factory.CreateClient();

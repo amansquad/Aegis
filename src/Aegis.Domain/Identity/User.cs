@@ -189,6 +189,44 @@ public sealed class User : AggregateRoot<Guid>, ITenantOwned, IAuditableEntity, 
     }
 
     /// <summary>
+    /// Creates a user from an accepted invitation, already confirmed and active.
+    /// </summary>
+    /// <remarks>
+    /// Confirmed on creation because the invitation token was delivered to the address and
+    /// presenting it proves control of that inbox. Requiring a further confirmation email would ask
+    /// the user to prove the same thing twice, and every extra step in an onboarding flow is a step
+    /// some people never complete.
+    /// </remarks>
+    /// <param name="organizationId">The inviting organization.</param>
+    /// <param name="email">The invited address, already validated.</param>
+    /// <param name="passwordHash">Hash of the password the invitee chose.</param>
+    /// <param name="firstName">Given name.</param>
+    /// <param name="lastName">Family name.</param>
+    /// <param name="roleIds">Roles granted by the invitation.</param>
+    public static User RegisterFromInvitation(
+        Guid organizationId,
+        EmailAddress email,
+        PasswordHash passwordHash,
+        string firstName,
+        string lastName,
+        IEnumerable<Guid> roleIds)
+    {
+        ArgumentNullException.ThrowIfNull(roleIds);
+
+        var user = Register(organizationId, email, passwordHash, firstName, lastName);
+
+        user.EmailConfirmed = true;
+        user.Status = UserStatus.Active;
+
+        foreach (var roleId in roleIds.Distinct())
+        {
+            user._roleIds.Add(roleId);
+        }
+
+        return user;
+    }
+
+    /// <summary>
     /// Records a successful sign-in, clearing any accumulated failure count.
     /// </summary>
     public Result RecordSuccessfulSignIn(DateTimeOffset now)

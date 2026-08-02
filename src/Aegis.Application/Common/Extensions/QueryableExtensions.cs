@@ -173,13 +173,42 @@ public static class QueryableExtensions
         CancellationToken cancellationToken = default) =>
         source.ToPagedResultAsync(query.Page, query.PageSize, cancellationToken);
 
+    /// <summary>
+    /// Applies the default ordering, unwrapping the boxing conversion the signature introduces.
+    /// </summary>
+    /// <remarks>
+    /// <c>Expression&lt;Func&lt;T, object?&gt;&gt;</c> lets a caller pass any property regardless of
+    /// its type, but the compiler inserts a <c>Convert(..., object)</c> around a value type to
+    /// satisfy it. EF Core cannot translate <c>ORDER BY</c> over that boxing node and throws at
+    /// execution time, which surfaces as a 500 on the first list endpoint that uses a
+    /// <c>DateTimeOffset</c> default sort — as it did here.
+    /// </remarks>
     private static IOrderedQueryable<T> ApplyDefault<T>(
         IQueryable<T> source,
         SortDirection direction,
-        Expression<Func<T, object?>> defaultSort) =>
-        direction == SortDirection.Descending
+        Expression<Func<T, object?>> defaultSort)
+    {
+        var method = direction == SortDirection.Descending
+            ? OrderByDescendingMethod
+            : OrderByMethod;
+
+        if (defaultSort.Body is UnaryExpression
+            {
+                NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked,
+            } boxing)
+        {
+            var unboxed = Expression.Lambda(boxing.Operand, defaultSort.Parameters);
+            var closedMethod = method.MakeGenericMethod(typeof(T), boxing.Operand.Type);
+
+            return (IOrderedQueryable<T>)closedMethod.Invoke(null, [source, unboxed])!;
+        }
+
+        // Already a reference type, so no conversion was inserted and the expression is usable
+        // as-is.
+        return direction == SortDirection.Descending
             ? source.OrderByDescending(defaultSort)
             : source.OrderBy(defaultSort);
+    }
 
     /// <summary>
     /// Determines whether a property type can participate in a SQL <c>ORDER BY</c>.

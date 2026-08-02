@@ -1,3 +1,4 @@
+using Aegis.Application.Abstractions.Persistence;
 using Aegis.Domain.Identity;
 using Aegis.Domain.Identity.ValueObjects;
 using Aegis.Domain.Organizations;
@@ -68,11 +69,12 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
         // DisplayName is computed from first and last name, so it must not be persisted.
         builder.Ignore(u => u.DisplayName);
 
-        // Role assignments as a join table. The backing field is a private List<Guid>, so the
-        // collection is mapped as a primitive collection owned by the user.
+        // Mapped under the public property name, not the backing field, so that LINQ such as
+        // `u.RoleIds.Contains(roleId)` translates to SQL. Mapping it as "_roleIds" leaves the
+        // property unmapped, and any query filtering on it fails at translation time rather than
+        // at build time.
         builder
-            .PrimitiveCollection<List<Guid>>("_roleIds")
-            .HasColumnName("RoleIds")
+            .PrimitiveCollection<List<Guid>>(EntityFields.UserRoleIds).HasColumnName("RoleIds")
             .HasField("_roleIds")
             .UsePropertyAccessMode(PropertyAccessMode.Field);
 
@@ -137,6 +139,49 @@ internal sealed class RefreshTokenConfiguration : IEntityTypeConfiguration<Refre
     }
 }
 
+/// <summary>Maps <see cref="UserInvitation"/>.</summary>
+internal sealed class UserInvitationConfiguration : IEntityTypeConfiguration<UserInvitation>
+{
+    public void Configure(EntityTypeBuilder<UserInvitation> builder)
+    {
+        builder.ToTable("UserInvitations", "identity");
+
+        builder.HasKey(i => i.Id);
+        builder.Property(i => i.Id).ValueGeneratedNever();
+
+        builder.Property(i => i.OrganizationId).IsRequired();
+
+        builder
+            .Property(i => i.Email)
+            .HasConversion(email => email.Value, value => EmailAddress.FromTrustedSource(value))
+            .HasMaxLength(EmailAddress.MaxLength)
+            .IsRequired();
+
+        builder.Property(i => i.TokenHash).HasMaxLength(64).IsRequired();
+        builder.Property(i => i.Status).HasConversion<int>().IsRequired();
+
+        builder
+            .PrimitiveCollection<List<Guid>>(EntityFields.InvitationRoleIds).HasColumnName("RoleIds")
+            .HasField("_roleIds")
+            .UsePropertyAccessMode(PropertyAccessMode.Field);
+
+        builder.Ignore(i => i.RoleIds);
+
+        // The acceptance lookup, performed before any tenant is known. Unique because a token is
+        // single-use by definition, so a duplicate would mean the generator had collided.
+        builder
+            .HasIndex(i => i.TokenHash)
+            .IsUnique()
+            .HasDatabaseName("UX_UserInvitations_TokenHash");
+
+        // Serves "outstanding invitations for this organization", and the supersede-on-resend
+        // lookup that revokes an earlier pending invitation to the same address.
+        builder
+            .HasIndex(i => new { i.OrganizationId, i.Status })
+            .HasDatabaseName("IX_UserInvitations_Organization_Status");
+    }
+}
+
 /// <summary>Maps <see cref="Role"/>.</summary>
 internal sealed class RoleConfiguration : IEntityTypeConfiguration<Role>
 {
@@ -156,8 +201,7 @@ internal sealed class RoleConfiguration : IEntityTypeConfiguration<Role>
         // set on every sign-in and never queried individually, so a separate table would add a join
         // to the hottest path in exchange for a normalisation nothing benefits from.
         builder
-            .PrimitiveCollection<List<string>>("_permissions")
-            .HasColumnName("Permissions")
+            .PrimitiveCollection<List<string>>(EntityFields.RolePermissions).HasColumnName("Permissions")
             .HasField("_permissions")
             .UsePropertyAccessMode(PropertyAccessMode.Field);
 
