@@ -39,3 +39,6 @@ docker-compose*.yml
 **/Dockerfile
 *.md
 !README.md
+
+# Note: .editorconfig is deliberately NOT ignored. It carries the analyzer policy, and the build
+# treats warnings as errors, so excluding it breaks the image build on rules already decided.

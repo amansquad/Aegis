@@ -8,7 +8,11 @@ WORKDIR /src
 
 # Project and props files are copied before the source so that the restore layer is cached against
 # dependency changes alone. Editing a .cs file then rebuilds without re-downloading every package.
-COPY Directory.Build.props Directory.Packages.props global.json ./
+# .editorconfig is not optional here. Warnings are errors solution-wide and the analyzer policy
+# (including the justified CA1716 suppression for the type named `Error`) lives in that file, so a
+# build without it fails on rules the repository has explicitly decided about. Omitting it is how a
+# container build breaks while `dotnet build` on a developer's machine stays green.
+COPY Directory.Build.props Directory.Packages.props global.json .editorconfig ./
 COPY src/Aegis.Domain/Aegis.Domain.csproj src/Aegis.Domain/
 COPY src/Aegis.Application/Aegis.Application.csproj src/Aegis.Application/
 COPY src/Aegis.Infrastructure/Aegis.Infrastructure.csproj src/Aegis.Infrastructure/
