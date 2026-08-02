@@ -2,6 +2,7 @@ using System.Linq.Expressions;
 using Aegis.Application.Abstractions.Multitenancy;
 using Aegis.Application.Abstractions.Persistence;
 using Aegis.Domain.Abstractions;
+using Aegis.Domain.Assets;
 using Aegis.Domain.Auditing;
 using Aegis.Domain.Identity;
 using Aegis.Domain.Organizations;
@@ -40,6 +41,9 @@ public sealed class AegisDbContext : DbContext, IAegisDbContext
 
     /// <inheritdoc />
     public DbSet<Role> Roles => Set<Role>();
+
+    /// <inheritdoc />
+    public DbSet<Asset> Assets => Set<Asset>();
 
     /// <summary>
     /// The tenant applied by the global query filters.

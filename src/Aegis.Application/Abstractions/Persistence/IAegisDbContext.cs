@@ -1,3 +1,4 @@
+using Aegis.Domain.Assets;
 using Aegis.Domain.Auditing;
 using Aegis.Domain.Identity;
 using Aegis.Domain.Organizations;
@@ -56,6 +57,9 @@ public interface IAegisDbContext
 
     /// <summary>Roles defined by the current organization.</summary>
     DbSet<Role> Roles { get; }
+
+    /// <summary>Infrastructure assets belonging to the current organization.</summary>
+    DbSet<Asset> Assets { get; }
 
     /// <summary>
     /// Escape hatch for raw SQL, transactions and provider-specific operations.
