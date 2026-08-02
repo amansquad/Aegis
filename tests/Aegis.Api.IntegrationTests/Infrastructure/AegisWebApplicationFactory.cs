@@ -62,6 +62,8 @@ public sealed class AegisWebApplicationFactory : WebApplicationFactory<Program>,
         // fixed cost every test run pays before the first assertion.
         await Task.WhenAll(_database.StartAsync(), _redis.StartAsync());
 
+        PublishContainerEndpoints();
+
         await using var scope = Services.CreateAsyncScope();
         var context = scope.ServiceProvider.GetRequiredService<AegisDbContext>();
 
@@ -85,27 +87,46 @@ public sealed class AegisWebApplicationFactory : WebApplicationFactory<Program>,
 
         builder.UseEnvironment(Environments.Development);
 
-        builder.ConfigureAppConfiguration((_, configuration) =>
-        {
-            configuration.AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["ConnectionStrings:Database"] = _database.GetConnectionString(),
-                ["Cache:ConnectionString"] = _redis.GetConnectionString(),
-                ["Cache:InstanceName"] = "aegis-test",
-
-                // Caching is disabled by default so that persistence assertions observe the
-                // database rather than a cached answer from a previous test. Tests that exist to
-                // exercise the cache re-enable it explicitly.
-                ["Cache:Enabled"] = "false",
-            });
-        });
-
         builder.ConfigureTestServices(services =>
         {
             // Replaces JWT bearer authentication with a header-driven stub, so tests can assert on
             // tenant scoping without an Identity module that does not exist yet.
             services.AddTestAuthentication();
         });
+    }
+
+    /// <summary>
+    /// Exposes the containers' endpoints to the application through environment variables.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Environment variables rather than <c>ConfigureAppConfiguration</c>, for a specific
+    /// reason.</b> Under minimal hosting, <c>Program.cs</c> reads <c>builder.Configuration</c> while
+    /// registering services, but the configuration sources a <c>WebApplicationFactory</c> adds
+    /// through <c>ConfigureAppConfiguration</c> are only applied later, when the host is built. The
+    /// injected values therefore arrive after <c>AddInfrastructure</c> has already looked for the
+    /// connection string and found nothing.
+    /// </para>
+    /// <para>
+    /// Environment variables are read by the application's own <c>CreateBuilder</c> call, so
+    /// setting them before the host is first touched puts the values in place in time. CI caught
+    /// this the hard way: every integration test failed at startup with a missing connection string.
+    /// </para>
+    /// <para>
+    /// These are process-wide, which is acceptable because the test process hosts exactly one
+    /// fixture for the lifetime of the run.
+    /// </para>
+    /// </remarks>
+    private void PublishContainerEndpoints()
+    {
+        Environment.SetEnvironmentVariable("ConnectionStrings__Database", _database.GetConnectionString());
+        Environment.SetEnvironmentVariable("Cache__ConnectionString", _redis.GetConnectionString());
+        Environment.SetEnvironmentVariable("Cache__InstanceName", "aegis-test");
+
+        // Caching is off by default so that persistence assertions observe the database rather than
+        // a cached answer left by an earlier test. Tests that exist to exercise the cache turn it
+        // back on explicitly.
+        Environment.SetEnvironmentVariable("Cache__Enabled", "false");
     }
 
     /// <summary>
