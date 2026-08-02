@@ -1,0 +1,146 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancels superseded runs on the same branch. Without this, pushing three times in five minutes
+# queues three full runs and the first two are already irrelevant when they finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+jobs:
+  build-and-test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          # Central Package Management means every version lives in one file, so it alone is a
+          # sufficient cache key. Without CPM this would need to hash every csproj.
+          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Restore
+        run: dotnet restore
+
+      # Warnings are errors solution-wide, so this step is also the style and analyzer gate.
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Unit tests
+        run: |
+          dotnet test tests/Aegis.Domain.UnitTests \
+            --configuration Release --no-build \
+            --logger "trx;LogFileName=domain.trx" \
+            --collect:"XPlat Code Coverage" \
+            --results-directory ./TestResults
+          dotnet test tests/Aegis.Application.UnitTests \
+            --configuration Release --no-build \
+            --logger "trx;LogFileName=application.trx" \
+            --collect:"XPlat Code Coverage" \
+            --results-directory ./TestResults
+
+      # Testcontainers starts SQL Server and Redis against the runner's Docker daemon, which is
+      # present on ubuntu-latest by default. These run separately from the unit tests so that a
+      # container failure is immediately distinguishable from a logic failure.
+      - name: Integration tests
+        run: |
+          dotnet test tests/Aegis.Api.IntegrationTests \
+            --configuration Release --no-build \
+            --logger "trx;LogFileName=integration.trx" \
+            --results-directory ./TestResults
+
+      - name: Publish test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: ./TestResults
+          retention-days: 7
+
+  verify-migrations:
+    name: Verify migrations are current
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore tools
+        run: dotnet tool restore
+
+      # Catches the commit that changes an entity and forgets the migration. Without this the
+      # mismatch surfaces at deployment, against a real database, at the worst possible moment.
+      - name: Fail if the model has undeclared changes
+        run: |
+          dotnet dotnet-ef migrations has-pending-model-changes \
+            --project src/Aegis.Infrastructure \
+            --startup-project src/Aegis.Api
+
+      - name: Verify the migration bundle builds
+        run: |
+          dotnet dotnet-ef migrations script \
+            --idempotent \
+            --project src/Aegis.Infrastructure \
+            --startup-project src/Aegis.Api \
+            --output ./migration.sql
+
+      - name: Publish migration script
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-script
+          path: ./migration.sql
+          retention-days: 7
+
+  docker:
+    name: Build container image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: build-and-test
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Built but not pushed. There is no registry configured yet, and building on every PR still
+      # catches a broken Dockerfile at review time rather than at release time.
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: src/Aegis.Api/Dockerfile
+          push: false
+          tags: aegis-api:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

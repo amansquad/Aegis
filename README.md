@@ -342,21 +342,59 @@ Aegis/
 - Docker Desktop (SQL Server, Redis, and the integration test suite)
 - Node.js 20+ (frontend, once added)
 
-### Build and test
+### Run everything with Docker Compose
+
+```bash
+docker compose up -d
+```
+
+Brings up SQL Server, Redis and the API. The API waits on both dependencies' **health checks**,
+not merely on their containers starting — SQL Server accepts TCP connections well before it can
+answer a query, so a plain `depends_on` produces a first-run migration failure roughly every time.
+
+| Service | Endpoint |
+| --- | --- |
+| API | http://localhost:8080 |
+| Swagger | http://localhost:8080/swagger |
+| Liveness | http://localhost:8080/health/live |
+| Readiness | http://localhost:8080/health/ready |
+| SQL Server | `localhost,1433` |
+| Redis | `localhost:6379` |
+
+### Build and test locally
 
 ```bash
 dotnet restore
-dotnet build
-dotnet test
+dotnet build            # warnings are errors, so this is also the style gate
+dotnet test             # unit tests; integration tests need Docker running
 ```
 
-### Run the API
+The integration suite starts its own throwaway SQL Server and Redis via Testcontainers. The first
+run pulls roughly 1.6 GB of images; later runs reuse them.
+
+### Database migrations
 
 ```bash
-dotnet run --project src/Aegis.Api
+dotnet tool restore
+
+dotnet dotnet-ef migrations add <Name> \
+  --project src/Aegis.Infrastructure \
+  --startup-project src/Aegis.Api \
+  --output-dir Persistence/Migrations
 ```
 
-Liveness probe: `GET /health/live`.
+CI fails the build if the model has changes with no corresponding migration, which catches the
+commit that edits an entity and forgets the schema before it reaches a real database.
+
+### Continuous integration
+
+`.github/workflows/ci.yml` runs three jobs on every push and pull request:
+
+| Job | Gate |
+| --- | --- |
+| `build-and-test` | Release build (warnings as errors), unit tests, integration tests with coverage |
+| `verify-migrations` | Fails on undeclared model changes; publishes an idempotent SQL script |
+| `docker` | Builds the API image so a broken Dockerfile surfaces at review, not release |
 
 ---
 

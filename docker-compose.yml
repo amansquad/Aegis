@@ -1,0 +1,78 @@
+name: aegis
+
+# Local development stack. Production deployment is a separate concern: these containers use
+# development credentials, expose ports on the host, and store data in named volumes rather than
+# managed storage.
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: aegis-sqlserver
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Local_Dev_Only_P@ssw0rd"
+      MSSQL_PID: Developer
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    healthcheck:
+      # The API depends on this being genuinely queryable, not merely listening. A TCP check would
+      # report healthy while SQL Server is still recovering databases, and the API would then fail
+      # its first migration attempt.
+      test:
+        [
+          "CMD-SHELL",
+          "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -Q 'SELECT 1' || exit 1",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: aegis-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    # appendonly keeps the cache warm across restarts. Not required for correctness — the cache
+    # adapter treats every miss as normal — but it avoids a cold-start stampede after a restart.
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: src/Aegis.Api/Dockerfile
+    container_name: aegis-api
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: "8080"
+      ConnectionStrings__Database: "Server=sqlserver,1433;Database=Aegis;User Id=sa;Password=Local_Dev_Only_P@ssw0rd;TrustServerCertificate=True;Encrypt=True"
+      Cache__ConnectionString: "redis:6379"
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  sqlserver-data:
+  redis-data:

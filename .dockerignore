@@ -1,0 +1,41 @@
+# Keeps the build context small and, more importantly, keeps host build output from overwriting
+# what the container builds. A copied-in bin/ from a Windows host is the classic cause of an image
+# that runs locally and fails in CI.
+
+**/bin/
+**/obj/
+**/out/
+artifacts/
+
+**/node_modules/
+**/.next/
+**/.turbo/
+
+.git/
+.github/
+.vs/
+.vscode/
+.idea/
+
+**/TestResults/
+**/coverage/
+**/*.trx
+
+logs/
+storage/
+uploads/
+
+# Never copy secrets into an image layer. Layers are cached, distributed and trivially extractable,
+# so a secret added here is a secret published even if a later layer deletes it.
+**/.env
+**/.env.*
+!**/.env.example
+**/appsettings.Local.json
+**/secrets.json
+**/*.pfx
+**/*.key
+
+docker-compose*.yml
+**/Dockerfile
+*.md
+!README.md
