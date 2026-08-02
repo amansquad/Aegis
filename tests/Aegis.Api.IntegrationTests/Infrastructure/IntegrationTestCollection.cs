@@ -71,7 +71,10 @@ public abstract class IntegrationTestBase(AegisWebApplicationFactory factory)
         var suffix = Guid.CreateVersion7().ToString("N")[..12];
         var organizationName = $"{namePrefix} {suffix}";
         var email = $"admin.{suffix}@aegis.test";
-        const string password = "correct-horse-battery-staple";
+        // Not "correct-horse-battery-staple": the password policy now bans it, which it should —
+        // the xkcd example is one of the most published passphrases in existence. This one is
+        // long, unlisted, and shares no fragment with the generated organization name or email.
+        const string password = "thistle marmalade quiet lantern";
 
         using var client = CreateAnonymousClient();
 

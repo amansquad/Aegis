@@ -14,8 +14,10 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using System.Threading.RateLimiting;
 using Serilog;
 using Serilog.Exceptions;
 
@@ -104,6 +106,35 @@ try
 
             options.Events = new JwtBearerEvents
             {
+                // Closes the window in which a revoked capability keeps working. A signature-valid
+                // token is not sufficient: the security stamp it carries must still match the
+                // user's current one, so a password change, a role withdrawal or a deactivation
+                // takes effect on the next request rather than when the token happens to expire.
+                //
+                // Backed by a cache with explicit eviction, so the steady-state cost is one cache
+                // read rather than a database round trip per request.
+                OnTokenValidated = async context =>
+                {
+                    var principal = context.Principal;
+
+                    if (principal is null ||
+                        !Guid.TryParse(principal.FindFirst(AegisClaims.UserId)?.Value, out var userId))
+                    {
+                        context.Fail("The token carries no usable subject claim.");
+                        return;
+                    }
+
+                    var stampService = context.HttpContext.RequestServices
+                        .GetRequiredService<Aegis.Application.Abstractions.Security.ISecurityStampService>();
+
+                    var stamp = principal.FindFirst(AegisClaims.SecurityStamp)?.Value;
+
+                    if (!await stampService.IsCurrentAsync(userId, stamp, context.HttpContext.RequestAborted))
+                    {
+                        context.Fail("The session is no longer valid.");
+                    }
+                },
+
                 OnAuthenticationFailed = context =>
                 {
                     // Tells the client specifically that the token expired, so it can refresh
@@ -139,6 +170,80 @@ try
 
     builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
     builder.Services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
+
+    // ---- Rate limiting ----
+    //
+    // Account lockout defends one account against many guesses. It is blind to the opposite shape
+    // of attack: credential spraying, where one common password is tried against thousands of
+    // accounts. Each account sees a single failure, no lockout ever triggers, and a few percent of
+    // accounts fall. Limiting by source address is what catches that.
+    var rateLimits = builder.Configuration.GetSection(RateLimitOptions.SectionName)
+        .Get<RateLimitOptions>() ?? new RateLimitOptions();
+
+    builder.Services.AddRateLimiter(options =>
+    {
+        options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+        options.OnRejected = async (context, cancellationToken) =>
+        {
+            // Retry-After turns a rejection into something a well-behaved client can act on, rather
+            // than something it retries immediately and makes worse.
+            if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
+            {
+                context.HttpContext.Response.Headers.RetryAfter =
+                    ((int)retryAfter.TotalSeconds).ToString(CultureInfo.InvariantCulture);
+            }
+
+            context.HttpContext.RequestServices
+                .GetRequiredService<ILoggerFactory>()
+                .CreateLogger("Aegis.RateLimiter")
+                .LogWarning(
+                    "Rate limit rejected {Method} {Path} from {IpAddress}",
+                    context.HttpContext.Request.Method,
+                    context.HttpContext.Request.Path,
+                    context.HttpContext.Connection.RemoteIpAddress);
+
+            await context.HttpContext.Response.WriteAsJsonAsync(
+                new ProblemDetails
+                {
+                    Status = StatusCodes.Status429TooManyRequests,
+                    Title = "Too many requests.",
+                    Detail = "Slow down and try again shortly.",
+                },
+                cancellationToken);
+        };
+
+        // Applied to the authentication endpoints, which are anonymous and therefore the ones an
+        // attacker can hammer without holding an account.
+        options.AddPolicy(RateLimitPolicies.Authentication, httpContext =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                // Partitioned by source address. Partitioning by email instead would let an
+                // attacker sidestep the limit entirely by varying the address, which is precisely
+                // what spraying does.
+                partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                factory: _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = rateLimits.AuthenticationPermitLimit,
+                    Window = TimeSpan.FromSeconds(rateLimits.AuthenticationWindowSeconds),
+
+                    // No queue. Holding a failed sign-in attempt open consumes a connection for an
+                    // attacker's benefit; rejecting immediately is both cheaper and clearer.
+                    QueueLimit = 0,
+                }));
+
+        // A deliberately tighter budget for registration. It creates a tenant, seeds five roles and
+        // performs a full key derivation, so it is the most expensive anonymous endpoint in the API
+        // and the obvious lever for exhausting the database.
+        options.AddPolicy(RateLimitPolicies.Registration, httpContext =>
+            RateLimitPartition.GetFixedWindowLimiter(
+                partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                factory: _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = rateLimits.RegistrationPermitLimit,
+                    Window = TimeSpan.FromSeconds(rateLimits.RegistrationWindowSeconds),
+                    QueueLimit = 0,
+                }));
+    });
 
     builder.Services.AddAuthorizationBuilder()
         // Secure by default: an endpoint with no attribute requires authentication rather than
@@ -234,6 +339,11 @@ try
     }
 
     app.UseHttpsRedirection();
+
+    // Before authentication, deliberately. A rejected request should cost as little as possible,
+    // and validating a JWT signature for a caller who is about to be turned away is work done on
+    // the attacker's behalf.
+    app.UseRateLimiter();
 
     app.UseAuthentication();
 

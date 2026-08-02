@@ -1,7 +1,9 @@
+using Aegis.Api.Authorization;
 using Aegis.Application.Identity.Commands;
 using Aegis.Application.Identity.Contracts;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Aegis.Api.Controllers;
 
@@ -21,6 +23,7 @@ public sealed class AuthController : ApiControllerBase
     /// <response code="409">The organization identifier or email address is already taken.</response>
     [HttpPost("register")]
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.Registration)]
     [ProducesResponseType(typeof(AuthenticationResultDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
@@ -40,6 +43,7 @@ public sealed class AuthController : ApiControllerBase
     /// <response code="403">The organization has been suspended.</response>
     [HttpPost("login")]
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.Authentication)]
     [ProducesResponseType(typeof(AuthenticationResultDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
@@ -58,6 +62,7 @@ public sealed class AuthController : ApiControllerBase
     /// <response code="401">The refresh token was unknown, expired, revoked, or replayed.</response>
     [HttpPost("refresh")]
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.Authentication)]
     [ProducesResponseType(typeof(AuthenticationResultDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
     public Task<IActionResult> Refresh(

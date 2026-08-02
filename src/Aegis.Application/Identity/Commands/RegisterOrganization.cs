@@ -38,26 +38,19 @@ public sealed record RegisterOrganizationCommand(
     string LastName) : ICommand<AuthenticationResultDto>;
 
 /// <summary>Validates <see cref="RegisterOrganizationCommand"/>.</summary>
+/// <remarks>
+/// Password screening runs here rather than in the handler so that a weak password comes back as a
+/// field-level validation error the form can render beside the input, alongside any other problems
+/// with the request, rather than as a lone rejection after everything else has been accepted.
+/// </remarks>
 public sealed class RegisterOrganizationCommandValidator : AbstractValidator<RegisterOrganizationCommand>
 {
-    /// <summary>Minimum password length.</summary>
-    /// <remarks>
-    /// <para>
-    /// Twelve characters, with no composition rules beyond that. NIST SP 800-63B withdrew the
-    /// mandatory-symbol advice because it reliably produces <c>Password1!</c> — users satisfy the
-    /// checker rather than the intent, and the result is shorter and more predictable than a
-    /// passphrase would have been. Length is the property that actually resists offline cracking.
-    /// </para>
-    /// <para>
-    /// Screening against known-breached password lists is the genuinely effective control and is
-    /// planned; it belongs in an adapter with a real corpus behind it, not in a regex here.
-    /// </para>
-    /// </remarks>
-    public const int MinimumPasswordLength = 12;
-
     /// <summary>Initialises the validator.</summary>
-    public RegisterOrganizationCommandValidator()
+    /// <param name="passwordPolicy">Screens the proposed password.</param>
+    public RegisterOrganizationCommandValidator(IPasswordPolicy passwordPolicy)
     {
+        ArgumentNullException.ThrowIfNull(passwordPolicy);
+
         RuleFor(c => c.OrganizationName)
             .NotEmpty().WithMessage("An organization name is required.")
             .MaximumLength(200);
@@ -71,12 +64,32 @@ public sealed class RegisterOrganizationCommandValidator : AbstractValidator<Reg
             .Must(email => EmailAddress.Create(email).IsSuccess)
             .WithMessage("The email address is not in a valid format.");
 
+        // Screened against the caller's own details as well as the banned list, so a password built
+        // from the organization name or the administrator's email is rejected. Anyone targeting
+        // this specific person already knows all three.
         RuleFor(c => c.Password)
             .NotEmpty().WithMessage("A password is required.")
-            .MinimumLength(MinimumPasswordLength)
-            .WithMessage($"A password must be at least {MinimumPasswordLength} characters.")
-            .MaximumLength(256)
-            .WithMessage("A password cannot exceed 256 characters.");
+            .Custom((password, context) =>
+            {
+                if (string.IsNullOrEmpty(password))
+                {
+                    return;
+                }
+
+                var command = context.InstanceToValidate;
+
+                var screening = passwordPolicy.Screen(
+                    password,
+                    command.Email,
+                    command.OrganizationName,
+                    command.FirstName,
+                    command.LastName);
+
+                if (!screening.IsAcceptable)
+                {
+                    context.AddFailure(nameof(RegisterOrganizationCommand.Password), screening.Reason!);
+                }
+            });
 
         RuleFor(c => c.FirstName).NotEmpty().MaximumLength(100);
         RuleFor(c => c.LastName).NotEmpty().MaximumLength(100);

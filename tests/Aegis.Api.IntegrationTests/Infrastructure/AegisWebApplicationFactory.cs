@@ -124,7 +124,22 @@ public sealed class AegisWebApplicationFactory : WebApplicationFactory<Program>,
         // one test can be presented in another; obviously fake so it can never be mistaken for a
         // real one if it escapes into a log or a copied snippet.
         Environment.SetEnvironmentVariable("Jwt__SigningKey", TestSigningKey);
+
+        // Every test in the suite shares one source address, so production budgets would exhaust
+        // the registration allowance within the first few tests and fail everything after them —
+        // with a 429 that looks nothing like the assertion that actually failed.
+        //
+        // Raised rather than disabled, so the limiter is still in the pipeline and still wired to
+        // the endpoints. RateLimitingTests then verifies the mechanism against these budgets, which
+        // keeps the control tested without letting it interfere with unrelated assertions.
+        Environment.SetEnvironmentVariable("RateLimiting__RegistrationPermitLimit", "500");
+        Environment.SetEnvironmentVariable("RateLimiting__RegistrationWindowSeconds", "60");
+        Environment.SetEnvironmentVariable("RateLimiting__AuthenticationPermitLimit", "40");
+        Environment.SetEnvironmentVariable("RateLimiting__AuthenticationWindowSeconds", "60");
     }
+
+    /// <summary>Authentication requests permitted per window in the test host.</summary>
+    public const int TestAuthenticationPermitLimit = 40;
 
     /// <summary>The signing key used by the test host. Not a secret, and deliberately not usable.</summary>
     public const string TestSigningKey =

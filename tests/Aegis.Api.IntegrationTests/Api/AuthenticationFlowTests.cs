@@ -83,7 +83,7 @@ public sealed class AuthenticationFlowTests(AegisWebApplicationFactory factory)
             OrganizationKind.WaterUtility,
             "Etc/UTC",
             $"other.{Guid.CreateVersion7():N}@aegis.test",
-            "correct-horse-battery-staple",
+            "thistle marmalade quiet lantern",
             "Bo",
             "Lin"));
 

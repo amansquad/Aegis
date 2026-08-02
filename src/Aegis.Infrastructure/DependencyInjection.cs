@@ -84,6 +84,10 @@ public static class DependencyInjection
         // factor is a compile-time constant rather than per-instance state.
         services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();
         services.AddSingleton<ITokenService, JwtTokenService>();
+        services.AddSingleton<IPasswordPolicy, PasswordPolicy>();
+
+        // Scoped: depends on the DbContext for the cache-miss path.
+        services.AddScoped<ISecurityStampService, SecurityStampService>();
 
         return services;
     }
