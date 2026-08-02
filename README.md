@@ -361,6 +361,33 @@ answer a query, so a plain `depends_on` produces a first-run migration failure r
 | SQL Server | `localhost,1433` |
 | Redis | `localhost:6379` |
 
+### Configuration and secrets
+
+**No connection string is committed to this repository**, and that is load-bearing for two separate
+reasons:
+
+1. A credential in source control is published, and rotating it afterwards does not un-publish it.
+2. In minimal hosting, `appsettings.json` **outranks** a test host's in-memory configuration. A
+   connection string sitting in that file silently overrides what the integration suite injects, so
+   the API connects to a database that is not there. This was a real CI failure, not a hypothetical.
+
+Supply it per environment instead:
+
+```bash
+# Local development
+dotnet user-secrets --project src/Aegis.Api \
+  set "ConnectionStrings:Database" "Server=localhost,1433;Database=Aegis;User Id=sa;Password=...;TrustServerCertificate=True"
+
+# Containers — docker-compose already sets this
+ConnectionStrings__Database=...
+
+# Applying migrations against a real server
+AEGIS_MIGRATIONS_CONNECTION=...
+```
+
+Startup fails immediately and explicitly when the connection string is absent, rather than on the
+first request.
+
 ### Build and test locally
 
 ```bash
