@@ -9,8 +9,6 @@ namespace Aegis.Api.IntegrationTests.Api;
 /// </summary>
 public sealed class PipelineTests(AegisWebApplicationFactory factory) : IntegrationTestBase(factory)
 {
-    private static readonly Guid Organization = Guid.Parse("55555555-5555-5555-5555-555555555555");
-
     [DockerFact]
     public async Task Liveness_succeeds_without_touching_any_dependency()
     {
@@ -97,13 +95,33 @@ public sealed class PipelineTests(AegisWebApplicationFactory factory) : Integrat
     }
 
     [DockerFact]
-    public async Task An_unknown_route_returns_a_problem_details_payload()
+    public async Task An_unknown_route_is_challenged_rather_than_reported_as_missing()
     {
-        using var client = CreateClientFor(Organization);
+        // I expected 404 here and was wrong: since .NET 7 the authorization middleware applies the
+        // fallback policy to requests that match no endpoint at all, so an anonymous caller gets
+        // 401 first.
+        //
+        // Keeping that behaviour rather than working around it. An unauthenticated scanner learns
+        // nothing about which routes exist, because every path answers identically whether or not
+        // it is real. Authenticated callers still receive an ordinary 404, which is asserted below.
+        using var client = CreateAnonymousClient();
 
         var response = await client.GetAsync(new Uri("/api/v1/does-not-exist", UriKind.Relative));
 
-        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+    }
+
+    [DockerFact]
+    public async Task An_authenticated_caller_receives_not_found_for_an_unknown_route()
+    {
+        var (client, _) = await CreateTenantClientAsync();
+
+        using (client)
+        {
+            var response = await client.GetAsync(new Uri("/api/v1/does-not-exist", UriKind.Relative));
+
+            response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        }
     }
 
     [DockerFact]

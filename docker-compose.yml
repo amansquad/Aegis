@@ -63,6 +63,10 @@ services:
       ASPNETCORE_HTTP_PORTS: "8080"
       ConnectionStrings__Database: "Server=sqlserver,1433;Database=Aegis;User Id=sa;Password=Local_Dev_Only_P@ssw0rd;TrustServerCertificate=True;Encrypt=True"
       Cache__ConnectionString: "redis:6379"
+      # Local development key only. Read from the host environment when set, so a real deployment
+      # supplies its own without editing this file. Anyone holding the key can mint a token for any
+      # user in any organization, so a production value belongs in a secret store, not here.
+      Jwt__SigningKey: "${AEGIS_JWT_SIGNING_KEY:-local-development-signing-key-do-not-use-in-production-0123456789}"
     ports:
       - "8080:8080"
     healthcheck:

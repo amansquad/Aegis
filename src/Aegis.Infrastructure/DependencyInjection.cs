@@ -10,6 +10,8 @@ using Aegis.Infrastructure.Multitenancy;
 using Aegis.Infrastructure.Persistence;
 using Aegis.Infrastructure.Persistence.Interceptors;
 using Aegis.Infrastructure.Security;
+using Aegis.Infrastructure.Security.Hashing;
+using Aegis.Infrastructure.Security.Tokens;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -35,6 +37,7 @@ public static class DependencyInjection
         services.AddAmbientContext();
         services.AddPersistence(configuration);
         services.AddCaching(configuration);
+        services.AddSecurity(configuration);
 
         return services;
     }
@@ -56,6 +59,31 @@ public static class DependencyInjection
         services.AddScoped<IRequestContext, RequestContext>();
         services.AddScoped<IDomainEventCollector, DomainEventCollector>();
         services.AddScoped<IDomainEventDispatcher, DomainEventDispatcher>();
+
+        return services;
+    }
+
+    /// <summary>Registers password hashing and token issuance.</summary>
+    private static IServiceCollection AddSecurity(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        services
+            .AddOptions<JwtOptions>()
+            .Bind(configuration.GetSection(JwtOptions.SectionName))
+            .Validate(
+                o => !string.IsNullOrWhiteSpace(o.SigningKey),
+                "Jwt:SigningKey must be configured.")
+            .Validate(
+                o => o.AccessTokenMinutes is > 0 and <= 60,
+                "Jwt:AccessTokenMinutes must be between 1 and 60. A longer-lived access token " +
+                "cannot be revoked and widens the window in which a withdrawn permission still works.")
+            .ValidateOnStart();
+
+        // Stateless and thread-safe, so a single instance serves the process. The PBKDF2 work
+        // factor is a compile-time constant rather than per-instance state.
+        services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();
+        services.AddSingleton<ITokenService, JwtTokenService>();
 
         return services;
     }
@@ -106,9 +134,19 @@ public static class DependencyInjection
                 serviceProvider.GetRequiredService<AuditTrailInterceptor>(),
                 serviceProvider.GetRequiredService<DomainEventCollectionInterceptor>());
 
-            // Queries do not need change tracking, and tracking every read costs memory and
-            // fixup time proportional to result size. Commands opt back in per query.
-            options.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
+            // Tracking stays on by default, and read paths opt out with an explicit AsNoTracking().
+            //
+            // The reverse — NoTracking globally, with commands opting back in — looks like the
+            // better default because most queries are reads. It is not, and the integration suite
+            // proved it: a handler that loads an aggregate, mutates it and calls SaveChangesAsync
+            // succeeds and writes nothing at all. No exception, no warning, no failed assertion
+            // anywhere near the cause. Sign-out, lockout and refresh-token rotation all silently
+            // did nothing.
+            //
+            // The asymmetry decides it. Forgetting AsNoTracking costs some memory and snapshot
+            // work on a read. Forgetting AsTracking loses a write, and loses it quietly. Defaults
+            // should fail in the direction that is noisy and cheap, not silent and destructive.
+            options.UseQueryTrackingBehavior(QueryTrackingBehavior.TrackAll);
         });
 
         services.AddScoped<IAegisDbContext>(sp => sp.GetRequiredService<AegisDbContext>());

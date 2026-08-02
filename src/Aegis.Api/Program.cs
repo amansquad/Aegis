@@ -1,13 +1,20 @@
 using System.Globalization;
+using System.Text;
 using System.Text.Json.Serialization;
+using Aegis.Api.Authorization;
 using Aegis.Api.Middleware;
 using Aegis.Application;
 using Aegis.Infrastructure;
 using Aegis.Infrastructure.Persistence;
+using Aegis.Infrastructure.Security;
+using Aegis.Infrastructure.Security.Tokens;
 using HealthChecks.UI.Client;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Serilog;
 using Serilog.Exceptions;
@@ -56,6 +63,91 @@ try
     builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
     builder.Services.AddProblemDetails();
 
+    // ---- Authentication ----
+
+    var jwt = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
+        ?? throw new InvalidOperationException(
+            "The Jwt configuration section is missing. The API refuses to start without it rather " +
+            "than fall back to a default signing key.");
+
+    builder.Services
+        .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        .AddJwtBearer(options =>
+        {
+            options.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidIssuer = jwt.Issuer,
+
+                ValidateAudience = true,
+                ValidAudience = jwt.Audience,
+
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.SigningKey)),
+
+                ValidateLifetime = true,
+
+                // Default is five minutes, which silently extends every token's life by that much.
+                // Zero makes the configured lifetime mean what it says.
+                ClockSkew = TimeSpan.Zero,
+
+                // The claim names Aegis actually issues. Without these, ASP.NET Core maps to the
+                // SOAP-era URI claim types and both ICurrentUser and the permission handler see
+                // nothing.
+                NameClaimType = AegisClaims.Email,
+                RoleClaimType = AegisClaims.Role,
+            };
+
+            // Inbound claim mapping rewrites short names such as "sub" into long URIs. Turning it
+            // off keeps what arrives identical to what was issued.
+            options.MapInboundClaims = false;
+
+            options.Events = new JwtBearerEvents
+            {
+                OnAuthenticationFailed = context =>
+                {
+                    // Tells the client specifically that the token expired, so it can refresh
+                    // rather than bounce the user to a login screen.
+                    if (context.Exception is SecurityTokenExpiredException)
+                    {
+                        context.Response.Headers.Append("X-Token-Expired", "true");
+                    }
+
+                    return Task.CompletedTask;
+                },
+
+                OnMessageReceived = context =>
+                {
+                    // SignalR cannot set an Authorization header on the WebSocket handshake, so
+                    // hub connections pass the token as a query parameter. Accepted only for hub
+                    // paths: honouring it everywhere would put access tokens into server logs,
+                    // browser history and referrer headers.
+                    var accessToken = context.Request.Query["access_token"];
+
+                    if (!string.IsNullOrEmpty(accessToken) &&
+                        context.HttpContext.Request.Path.StartsWithSegments("/hubs"))
+                    {
+                        context.Token = accessToken;
+                    }
+
+                    return Task.CompletedTask;
+                },
+            };
+        });
+
+    // ---- Authorization ----
+
+    builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
+    builder.Services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
+
+    builder.Services.AddAuthorizationBuilder()
+        // Secure by default: an endpoint with no attribute requires authentication rather than
+        // being public. Forgetting [Authorize] then fails closed, and [AllowAnonymous] becomes an
+        // explicit, reviewable decision.
+        .SetFallbackPolicy(new AuthorizationPolicyBuilder()
+            .RequireAuthenticatedUser()
+            .Build());
+
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddSwaggerGen(options =>
     {
@@ -74,6 +166,30 @@ try
         {
             options.IncludeXmlComments(xml, includeControllerXmlComments: true);
         }
+
+        // Lets Swagger UI carry a bearer token, so the documentation is usable for exploration
+        // rather than only for reading.
+        options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+        {
+            Name = "Authorization",
+            Type = SecuritySchemeType.Http,
+            Scheme = "bearer",
+            BearerFormat = "JWT",
+            In = ParameterLocation.Header,
+            Description = "Paste the access token returned by /api/v1/auth/login.",
+        });
+
+        options.AddSecurityRequirement(new OpenApiSecurityRequirement
+        {
+            [new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer",
+                },
+            }] = [],
+        });
     });
 
     builder.Services
@@ -130,10 +246,13 @@ try
 
     // Liveness: is the process running? Deliberately checks nothing else, so a database blip
     // cannot cause an orchestrator to kill an otherwise healthy instance.
+    // AllowAnonymous is required because the fallback policy demands authentication. A probe that
+    // needs a token is a probe an orchestrator cannot call, and the instance is then marked
+    // unhealthy for the one reason that has nothing to do with its health.
     app.MapHealthChecks("/health/live", new HealthCheckOptions
     {
         Predicate = _ => false,
-    });
+    }).AllowAnonymous();
 
     // Readiness: can this instance actually serve traffic? Checks dependencies, so a instance
     // that cannot reach SQL Server is removed from the load balancer rather than serving errors.
@@ -141,7 +260,7 @@ try
     {
         Predicate = check => check.Tags.Contains("ready"),
         ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse,
-    });
+    }).AllowAnonymous();
 
     await app.RunAsync();
 }

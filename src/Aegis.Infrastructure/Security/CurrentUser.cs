@@ -32,6 +32,16 @@ public static class AegisClaims
 
     /// <summary>A granted permission. May appear multiple times.</summary>
     public const string Permission = "perm";
+
+    /// <summary>
+    /// The user's security stamp at the moment the token was issued.
+    /// </summary>
+    /// <remarks>
+    /// An access token cannot be recalled once issued. Comparing this against the stored stamp is
+    /// what allows a password change or a role revocation to take effect before the token would
+    /// otherwise expire.
+    /// </remarks>
+    public const string SecurityStamp = "sstamp";
 }
 
 /// <summary>

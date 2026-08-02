@@ -1,4 +1,6 @@
 using Aegis.Domain.Auditing;
+using Aegis.Domain.Identity;
+using Aegis.Domain.Organizations;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 
@@ -45,6 +47,15 @@ public interface IAegisDbContext
     /// never by handler code, so nothing should ever call <c>Add</c> on this set.
     /// </remarks>
     DbSet<AuditTrailEntry> AuditTrail { get; }
+
+    /// <summary>Tenants. Filtered so an organization can only ever see itself.</summary>
+    DbSet<Organization> Organizations { get; }
+
+    /// <summary>User accounts within the current organization.</summary>
+    DbSet<User> Users { get; }
+
+    /// <summary>Roles defined by the current organization.</summary>
+    DbSet<Role> Roles { get; }
 
     /// <summary>
     /// Escape hatch for raw SQL, transactions and provider-specific operations.

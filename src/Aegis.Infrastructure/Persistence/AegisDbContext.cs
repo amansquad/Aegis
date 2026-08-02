@@ -3,6 +3,8 @@ using Aegis.Application.Abstractions.Multitenancy;
 using Aegis.Application.Abstractions.Persistence;
 using Aegis.Domain.Abstractions;
 using Aegis.Domain.Auditing;
+using Aegis.Domain.Identity;
+using Aegis.Domain.Organizations;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 
@@ -29,6 +31,15 @@ public sealed class AegisDbContext : DbContext, IAegisDbContext
 
     /// <inheritdoc />
     public DbSet<AuditTrailEntry> AuditTrail => Set<AuditTrailEntry>();
+
+    /// <inheritdoc />
+    public DbSet<Organization> Organizations => Set<Organization>();
+
+    /// <inheritdoc />
+    public DbSet<User> Users => Set<User>();
+
+    /// <inheritdoc />
+    public DbSet<Role> Roles => Set<Role>();
 
     /// <summary>
     /// The tenant applied by the global query filters.
@@ -90,9 +101,10 @@ public sealed class AegisDbContext : DbContext, IAegisDbContext
             }
 
             var isTenantOwned = typeof(ITenantOwned).IsAssignableFrom(clrType);
+            var isTenantRoot = typeof(ITenantRoot).IsAssignableFrom(clrType);
             var isSoftDeletable = typeof(ISoftDeletable).IsAssignableFrom(clrType);
 
-            if (!isTenantOwned && !isSoftDeletable)
+            if (!isTenantOwned && !isTenantRoot && !isSoftDeletable)
             {
                 continue;
             }
@@ -100,17 +112,30 @@ public sealed class AegisDbContext : DbContext, IAegisDbContext
             var parameter = Expression.Parameter(clrType, "e");
             Expression? predicate = null;
 
+            var currentTenant = Expression.Property(
+                Expression.Constant(this),
+                nameof(CurrentTenantId));
+
             if (isTenantOwned)
             {
                 // e.OrganizationId == this.CurrentTenantId
                 var organizationId = Expression.Property(parameter, nameof(ITenantOwned.OrganizationId));
 
-                var currentTenant = Expression.Property(
-                    Expression.Constant(this),
-                    nameof(CurrentTenantId));
-
                 predicate = Expression.Equal(
                     Expression.Convert(organizationId, typeof(Guid?)),
+                    currentTenant);
+            }
+            else if (isTenantRoot)
+            {
+                // e.Id == this.CurrentTenantId
+                //
+                // The organization row is not owned by a tenant; its own key *is* the tenant. Left
+                // unfiltered it would be the one table in the schema with no isolation, letting any
+                // authenticated user enumerate every customer of the platform.
+                var id = Expression.Property(parameter, nameof(ITenantRoot.Id));
+
+                predicate = Expression.Equal(
+                    Expression.Convert(id, typeof(Guid?)),
                     currentTenant);
             }
 

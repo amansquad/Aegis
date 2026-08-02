@@ -1,7 +1,6 @@
 using Aegis.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -86,13 +85,6 @@ public sealed class AegisWebApplicationFactory : WebApplicationFactory<Program>,
         ArgumentNullException.ThrowIfNull(builder);
 
         builder.UseEnvironment(Environments.Development);
-
-        builder.ConfigureTestServices(services =>
-        {
-            // Replaces JWT bearer authentication with a header-driven stub, so tests can assert on
-            // tenant scoping without an Identity module that does not exist yet.
-            services.AddTestAuthentication();
-        });
     }
 
     /// <summary>
@@ -127,7 +119,16 @@ public sealed class AegisWebApplicationFactory : WebApplicationFactory<Program>,
         // a cached answer left by an earlier test. Tests that exist to exercise the cache turn it
         // back on explicitly.
         Environment.SetEnvironmentVariable("Cache__Enabled", "false");
+
+        // A fixed, obviously fake signing key. Fixed rather than random so that a token minted in
+        // one test can be presented in another; obviously fake so it can never be mistaken for a
+        // real one if it escapes into a log or a copied snippet.
+        Environment.SetEnvironmentVariable("Jwt__SigningKey", TestSigningKey);
     }
+
+    /// <summary>The signing key used by the test host. Not a secret, and deliberately not usable.</summary>
+    public const string TestSigningKey =
+        "integration-test-signing-key-not-a-secret-0123456789abcdef";
 
     /// <summary>
     /// Creates a scope whose tenant is already established, for tests that exercise persistence

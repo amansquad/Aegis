@@ -21,7 +21,16 @@ namespace Aegis.Domain.Identity;
 /// </remarks>
 public sealed class Role : AggregateRoot<Guid>, ITenantOwned, IAuditableEntity
 {
-    private readonly HashSet<string> _permissions = new(StringComparer.Ordinal);
+    /// <summary>
+    /// Granted permissions, held as an ordered list rather than a set.
+    /// </summary>
+    /// <remarks>
+    /// A <see cref="HashSet{T}"/> would express the intent better, but EF Core can only map a
+    /// primitive collection to an array or an <c>IList&lt;T&gt;</c> — a set has no defined element
+    /// order, so there is nothing for the provider to serialise deterministically. Uniqueness is
+    /// therefore enforced in the mutators below instead of by the collection type.
+    /// </remarks>
+    private readonly List<string> _permissions = [];
 
     /// <summary>Parameterless constructor required by EF Core materialisation.</summary>
     private Role()
@@ -69,8 +78,8 @@ public sealed class Role : AggregateRoot<Guid>, ITenantOwned, IAuditableEntity
     /// </remarks>
     public bool IsSystemRole { get; private set; }
 
-    /// <summary>Permissions this role confers.</summary>
-    public IReadOnlySet<string> Permissions => _permissions;
+    /// <summary>Permissions this role confers. Distinct by construction.</summary>
+    public IReadOnlyCollection<string> Permissions => _permissions.AsReadOnly();
 
     /// <inheritdoc />
     public DateTimeOffset CreatedOnUtc { get; set; }
@@ -124,10 +133,7 @@ public sealed class Role : AggregateRoot<Guid>, ITenantOwned, IAuditableEntity
 
         if (SystemRoles.DefaultPermissions.TryGetValue(name, out var defaults))
         {
-            foreach (var permission in defaults)
-            {
-                result.Value._permissions.Add(permission);
-            }
+            result.Value._permissions.AddRange(defaults.Distinct(StringComparer.Ordinal));
         }
 
         return result;
@@ -147,7 +153,12 @@ public sealed class Role : AggregateRoot<Guid>, ITenantOwned, IAuditableEntity
                 $"'{permission}' is not a recognised permission."));
         }
 
-        _permissions.Add(permission);
+        // Idempotent: granting a permission the role already holds is a no-op, not a duplicate.
+        // With a list rather than a set, this check is what preserves uniqueness.
+        if (!HasPermission(permission))
+        {
+            _permissions.Add(permission);
+        }
 
         return Result.Success();
     }
@@ -186,11 +197,7 @@ public sealed class Role : AggregateRoot<Guid>, ITenantOwned, IAuditableEntity
         }
 
         _permissions.Clear();
-
-        foreach (var permission in requested)
-        {
-            _permissions.Add(permission);
-        }
+        _permissions.AddRange(requested);
 
         return Result.Success();
     }
