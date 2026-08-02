@@ -187,7 +187,22 @@ development. None of those costs buy anything before there are multiple teams. A
 so that extraction is possible (modules own their tables, communicate by event, never share
 entities), and deferred until it is justified.
 
-### 2. Repository Pattern only where it earns its place
+### 2. Application depends on EF Core; Domain depends on nothing
+
+**Chosen:** `Aegis.Application` references `Microsoft.EntityFrameworkCore` (the abstraction
+package, not the SQL Server provider). `Aegis.Domain` references nothing at all.
+
+This is a documented compromise, recorded here rather than quietly made. `IAegisDbContext` exposes
+`DbSet<T>`, and the purist alternative — exposing `IQueryable<T>` — costs `Include`,
+`AsNoTracking`, `ExecuteUpdateAsync`, and every async terminal operator, since `ToListAsync` and
+friends are EF Core extension methods rather than LINQ. Recovering them means hand-rolling an async
+query abstraction larger than the thing it hides.
+
+What actually matters is preserved: no provider, no connection string, no migrations, and no
+`DbContext` base class in Application. The layer depends on a *query model*, not on a database, and
+`LayerDependencyTests` asserts it never names SQL Server or Redis.
+
+### 3. Repository Pattern only where it earns its place
 
 **Chosen:** handlers depend on `IAegisDbContext`; dedicated repositories only for aggregates with
 non-trivial reconstitution.
@@ -199,7 +214,7 @@ generic repositories tend to force `.ToList()` at the boundary and filter in mem
 context behind an interface keeps Application persistence-agnostic and unit-testable without paying
 that price.
 
-### 3. `Result<T>` for expected failures, exceptions for genuine faults
+### 4. `Result<T>` for expected failures, exceptions for genuine faults
 
 **Chosen:** business outcomes return `Result<T>`; invariant violations throw `DomainException`.
 
@@ -209,7 +224,7 @@ moves control flow into a `catch` far from the decision. A method returning `Res
 failure as part of its contract. Exceptions remain for the cases where the correct response is a
 bug report, and are caught once by global middleware that emits RFC 7807 `ProblemDetails`.
 
-### 4. Tenant isolation is infrastructural, not disciplinary
+### 5. Tenant isolation is infrastructural, not disciplinary
 
 **Chosen:** shared database, `ITenantOwned` marker, EF Core global query filters.
 
@@ -223,7 +238,7 @@ real and is not justified at this scale.
 The honest trade-off: global filters can be bypassed with `IgnoreQueryFilters()`, so its use is
 restricted to a small audited set of system operations.
 
-### 5. UUIDv7 primary keys
+### 6. UUIDv7 primary keys
 
 **Chosen:** `Guid.CreateVersion7()` rather than `Guid.NewGuid()` or `int` identity.
 
@@ -233,16 +248,24 @@ time-ordered, so inserts append to the end of the B-tree like an identity column
 properties that matter here: ids generatable client-side (essential for the offline mobile client,
 which must create work order records with no server round trip) and non-enumerable in URLs.
 
-### 6. Domain events dispatched after commit
+### 7. Domain events collected at save, dispatched after commit
 
-**Chosen:** entities collect events; a `SaveChanges` interceptor publishes them once the
-transaction succeeds.
+**Chosen:** a `SaveChanges` interceptor harvests events into a scoped buffer; `UnitOfWorkBehavior`
+drains and dispatches that buffer after `CommitAsync` returns.
 
-Dispatching inside the handler risks a notification sent, an audit row written and a cache
-invalidated for a transaction that subsequently rolls back. Post-commit dispatch makes the
-side effects consistent with the data.
+The obvious implementation — dispatch from the interceptor's `SavedChangesAsync` — is subtly wrong
+here. `SaveChangesAsync` is called by the handler, but the commit happens *later*, in the pipeline
+behaviour after the handler returns. So `SavedChangesAsync` fires inside an **uncommitted**
+transaction, and a rollback would leave notifications sent and caches invalidated for a change that
+never happened. Splitting collection from dispatch is what makes "after commit" actually mean after
+commit.
 
-### 7. Central Package Management
+**Known limitation, stated plainly:** if the process dies between commit and dispatch, those events
+are lost. Closing that window requires a transactional outbox — persist events as rows in the same
+transaction, deliver them at least once from a background processor. That is the correct end state
+and it is planned; the buffer is the honest intermediate step, not a finished one.
+
+### 8. Central Package Management
 
 **Chosen:** all versions in `Directory.Packages.props`.
 
@@ -361,7 +384,7 @@ an inner layer acquires an outward reference.
 
 ### Complete and verified
 
-**Increment 0 — Foundation** *(build green, 26 tests passing)*
+**Increment 0 — Foundation** *(build green, 0 warnings)*
 
 - Seven-project solution with the dependency rule wired and enforced
 - Central Package Management; warnings treated as errors solution-wide
@@ -370,13 +393,43 @@ an inner layer acquires an outward reference.
   `Result`/`Result<T>`, `Error`, `DomainException`
 - Entity contracts: `ITenantOwned`, `IAuditableEntity`, `ISoftDeletable`
 - Architecture test proving `Aegis.Domain` references nothing outside the BCL
-- Liveness endpoint
+
+**Increment 1 — Persistence and cross-cutting concerns** *(build green, 87 tests passing)*
+
+*Application ports* — `IAegisDbContext`, `ICurrentUser`, `ITenantContext`, `ICacheService`,
+`IRequestContext`, `IDomainEventCollector`, `IDomainEventDispatcher`.
+
+*CQRS contracts* — `ICommand`, `ICommand<T>`, `IQuery<T>` and their handlers, plus the
+`ICacheableQuery` and `ITransactionless` opt-in markers.
+
+*Pipeline* — five behaviours whose registration order is a functional specification:
+
+```
+Request → Logging → Performance → Validation → Caching → UnitOfWork → Handler
+```
+
+*Persistence* — `AegisDbContext` with reflection-driven global query filters, plus three
+interceptors whose order is load-bearing:
+
+| Interceptor | Responsibility |
+| --- | --- |
+| `PersistenceMetadataInterceptor` | Stamps tenant + audit fields; converts deletes into soft deletes |
+| `AuditTrailInterceptor` | Writes append-only audit rows, reading the stamped values |
+| `DomainEventCollectionInterceptor` | Harvests domain events for post-commit dispatch |
+
+*Querying* — `PaginatedQuery` with a hard page-size ceiling, `PagedResult<T>`, and composable
+`WhereIf` / `ApplySort` / `ToPagedResultAsync` helpers with whitelist-validated dynamic sorting.
+
+*API* — Serilog with correlation ids, `GlobalExceptionHandler` emitting RFC 7807 `ProblemDetails`,
+`CorrelationIdMiddleware`, `TenantResolutionMiddleware`, `ApiControllerBase`, Swagger, and split
+liveness/readiness health checks.
+
+*Schema* — initial migration creating the `audit.AuditTrail` table with three purpose-built indexes.
 
 ### Planned
 
 | # | Increment | Delivers |
 | --- | --- | --- |
-| 1 | Persistence + cross-cutting | `AegisDbContext`, interceptors for audit/tenant/soft-delete, MediatR pipeline behaviours, Serilog, global exception handling |
 | 2 | Identity | Registration, login, refresh tokens, RBAC, permission-based authorization |
 | 3 | Organizations | Tenants, districts, membership, invitations |
 | 4 | Assets | Asset hierarchy, spatial data, condition tracking, pagination and filtering |

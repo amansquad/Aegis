@@ -17,7 +17,7 @@ namespace Aegis.Domain.Common;
 /// </para>
 /// </remarks>
 /// <typeparam name="TId">The identifier type. Must be non-nullable.</typeparam>
-public abstract class Entity<TId> : IEquatable<Entity<TId>>
+public abstract class Entity<TId> : IEquatable<Entity<TId>>, IHasDomainEvents
     where TId : notnull
 {
     private readonly List<IDomainEvent> _domainEvents = [];

@@ -42,6 +42,27 @@ public sealed record Error(string Code, string Message, ErrorType Type = ErrorTy
     /// <summary>Sentinel representing the absence of an error.</summary>
     public static readonly Error None = new(string.Empty, string.Empty);
 
+    /// <summary>
+    /// Field-level failures, keyed by property name, for validation errors.
+    /// </summary>
+    /// <remarks>
+    /// Carried on <see cref="Error"/> itself rather than on a derived <c>ValidationError</c> type.
+    /// A single concrete error type keeps pattern matching in the HTTP translation layer to one
+    /// switch on <see cref="Type"/>, and record inheritance would complicate the value equality
+    /// that <see cref="Result"/> relies on.
+    /// </remarks>
+    public IReadOnlyDictionary<string, string[]>? Details { get; init; }
+
+    /// <summary>
+    /// Creates a <see cref="ErrorType.Validation"/> error carrying field-level failures, as
+    /// produced by the FluentValidation pipeline behaviour.
+    /// </summary>
+    public static Error Validation(IReadOnlyDictionary<string, string[]> details) =>
+        new("Validation.Failed", "One or more validation errors occurred.", ErrorType.Validation)
+        {
+            Details = details,
+        };
+
     /// <summary>Creates a <see cref="ErrorType.NotFound"/> error.</summary>
     public static Error NotFound(string code, string message) => new(code, message, ErrorType.NotFound);
 

@@ -9,10 +9,17 @@
   </ItemGroup>
 
   <!--
-    Orchestration primitives and abstractions only. Note what is absent: no EF Core, no Redis
-    client, no HTTP client, no ASP.NET Core. Application declares the ports it needs
-    (IAegisDbContext, ICacheService, IAiCompletionService) and Infrastructure supplies the
-    adapters. That inversion is what lets a handler be unit-tested without a database.
+    Orchestration primitives and abstractions. Note what is absent: no SQL Server provider, no
+    Redis client, no HTTP client, no ASP.NET Core. Application declares the ports it needs
+    (IAegisDbContext, ICacheService, ICurrentUser, ITenantContext) and Infrastructure supplies
+    the adapters. That inversion is what lets a handler be unit-tested without a database.
+
+    On Microsoft.EntityFrameworkCore below: this is a deliberate, documented compromise, not an
+    oversight. IAegisDbContext exposes DbSet<T>, because the purist alternative (IQueryable<T>)
+    costs Include, AsNoTracking, ExecuteUpdateAsync and every async terminal operator — recovering
+    those means hand-rolling an async query abstraction larger than the thing it hides. What
+    matters is preserved: this is the EF Core *abstraction* package, with no provider, no
+    connection string and no migrations. See IAegisDbContext for the full reasoning.
   -->
   <ItemGroup>
     <PackageReference Include="MediatR" />
@@ -20,6 +27,8 @@
     <PackageReference Include="FluentValidation.DependencyInjectionExtensions" />
     <PackageReference Include="Mapster" />
     <PackageReference Include="Mapster.DependencyInjection" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 
 </Project>

@@ -17,6 +17,14 @@
   -->
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <!--
+      Required by `dotnet ef` in the startup project. PrivateAssets keeps the design-time tooling
+      out of the published output, where it would ship an unused assembly to production.
+    -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
     <PackageReference Include="Swashbuckle.AspNetCore" />
     <PackageReference Include="Asp.Versioning.Mvc" />
     <PackageReference Include="Asp.Versioning.Mvc.ApiExplorer" />
@@ -26,6 +34,7 @@
     <PackageReference Include="Serilog.Enrichers.Environment" />
     <PackageReference Include="Serilog.Enrichers.Thread" />
     <PackageReference Include="Serilog.Exceptions" />
+    <PackageReference Include="Serilog.Formatting.Compact" />
     <PackageReference Include="AspNetCore.HealthChecks.SqlServer" />
     <PackageReference Include="AspNetCore.HealthChecks.Redis" />
     <PackageReference Include="AspNetCore.HealthChecks.UI.Client" />
