@@ -66,6 +66,11 @@ jobs:
       # present on ubuntu-latest by default. These run separately from the unit tests so that a
       # container failure is immediately distinguishable from a logic failure.
       - name: Integration tests
+        env:
+          # Forbids the graceful local skip. Without this a runner with a broken Docker daemon
+          # would report green while proving nothing, which is worse than having no suite at all:
+          # it manufactures confidence with no evidence behind it.
+          AEGIS_REQUIRE_DOCKER: "1"
         run: |
           dotnet test tests/Aegis.Api.IntegrationTests \
             --configuration Release --no-build \
