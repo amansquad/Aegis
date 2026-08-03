@@ -49,6 +49,10 @@ yarn-error.log*
 storage/
 uploads/
 
+## Local tooling (Claude Code skills/hooks) — session-local, not project source
+.github/hooks/
+.github/skills/
+
 ## Vercel
 # .vercel holds the project link and a short-lived OIDC token. Committing it would publish the
 # project and org ids and hand anyone with repo access a token scoped to the deployment.

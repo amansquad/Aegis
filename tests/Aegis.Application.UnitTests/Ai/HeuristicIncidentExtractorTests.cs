@@ -1,4 +1,5 @@
 using Aegis.Application.Abstractions.Ai;
+using Aegis.Domain.Incidents;
 using Aegis.Infrastructure.Ai;
 
 namespace Aegis.Application.UnitTests.Ai;
@@ -56,7 +57,7 @@ public sealed class HeuristicIncidentExtractorTests
             var result = await Extract(report);
 
             result.RequiresReview.ShouldBeTrue($"'{report}' must not be auto-accepted");
-            result.Method.ShouldBe(ExtractionMethod.Heuristic);
+            result.Method.ShouldBe(ClassificationMethod.Heuristic);
         }
     }
 

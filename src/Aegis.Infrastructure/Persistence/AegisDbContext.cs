@@ -5,6 +5,7 @@ using Aegis.Domain.Abstractions;
 using Aegis.Domain.Assets;
 using Aegis.Domain.Auditing;
 using Aegis.Domain.Identity;
+using Aegis.Domain.Incidents;
 using Aegis.Domain.Organizations;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
@@ -44,6 +45,9 @@ public sealed class AegisDbContext : DbContext, IAegisDbContext
 
     /// <inheritdoc />
     public DbSet<Asset> Assets => Set<Asset>();
+
+    /// <inheritdoc />
+    public DbSet<Incident> Incidents => Set<Incident>();
 
     /// <summary>
     /// The tenant applied by the global query filters.

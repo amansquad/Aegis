@@ -1,6 +1,7 @@
 using Aegis.Domain.Assets;
 using Aegis.Domain.Auditing;
 using Aegis.Domain.Identity;
+using Aegis.Domain.Incidents;
 using Aegis.Domain.Organizations;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -60,6 +61,9 @@ public interface IAegisDbContext
 
     /// <summary>Infrastructure assets belonging to the current organization.</summary>
     DbSet<Asset> Assets { get; }
+
+    /// <summary>Reported problems belonging to the current organization.</summary>
+    DbSet<Incident> Incidents { get; }
 
     /// <summary>
     /// Escape hatch for raw SQL, transactions and provider-specific operations.

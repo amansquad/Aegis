@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Aegis.Application.Abstractions.Ai;
+using Aegis.Domain.Incidents;
 using Aegis.Domain.Common;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -276,7 +277,7 @@ public sealed class OpenRouterIncidentExtractor(
                 // Clamped rather than trusted. A model returning 1.4 would otherwise sail past the
                 // review threshold on a value that means nothing.
                 Math.Clamp(extracted.Confidence, 0, 1),
-                ExtractionMethod.Model));
+                ClassificationMethod.Model));
         }
         catch (JsonException exception)
         {

@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Aegis.Application.Abstractions.Ai;
+using Aegis.Domain.Incidents;
 using Aegis.Domain.Common;
 
 namespace Aegis.Infrastructure.Ai;
@@ -11,7 +12,7 @@ namespace Aegis.Infrastructure.Ai;
 /// <para>
 /// <b>What this is for.</b> It keeps the intake form working, and the test suite green, on a
 /// machine with no API key and no network. It is not a substitute for the model and does not
-/// pretend to be one: every result it produces is marked <see cref="ExtractionMethod.Heuristic"/>,
+/// pretend to be one: every result it produces is marked <see cref="ClassificationMethod.Heuristic"/>,
 /// which forces human review regardless of the score it assigns. A dispatcher is always told a
 /// human classified this, not a model.
 /// </para>
@@ -122,7 +123,7 @@ public sealed partial class HeuristicIncidentExtractor : IIncidentExtractor
             ExtractAssetCode(report),
             safetyRisk,
             confidence,
-            ExtractionMethod.Heuristic)));
+            ClassificationMethod.Heuristic)));
     }
 
     private static IncidentSeverity ResolveSeverity(string text, bool safetyRisk)
