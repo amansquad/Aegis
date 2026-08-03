@@ -22,7 +22,7 @@ import { IS_DEMO } from "@/lib/api";
 const NAV = [
   { href: "/dashboard", label: "Operations", icon: LayoutDashboard },
   { href: "/assets", label: "Asset registry", icon: Activity },
-  { href: "/incidents", label: "Incidents", icon: AlertTriangle, pending: true },
+  { href: "/incidents", label: "Incidents", icon: AlertTriangle },
   { href: "/work-orders", label: "Work orders", icon: ClipboardList, pending: true },
   { href: "/maintenance", label: "Maintenance", icon: Wrench, pending: true },
 ] as const;

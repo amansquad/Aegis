@@ -137,3 +137,125 @@ export const TYPE_LABEL: Record<AssetType, string> = {
   Site: "Site",
   Other: "Other",
 };
+
+/* ------------------------------------------------------------------ *
+ * Incidents
+ * ------------------------------------------------------------------ */
+
+export type IncidentCategory =
+  | "Leak"
+  | "SupplyLoss"
+  | "WaterQuality"
+  | "PressureProblem"
+  | "Blockage"
+  | "StructuralDamage"
+  | "PowerFault"
+  | "RoadDefect"
+  | "Other";
+
+export type IncidentSeverity = "Low" | "Moderate" | "High" | "Critical";
+
+export type IncidentStatus =
+  | "Reported"
+  | "Triaged"
+  | "InProgress"
+  | "Resolved"
+  | "Closed"
+  | "Duplicate"
+  | "Rejected";
+
+export type ClassificationMethod = "Manual" | "Model" | "Heuristic";
+
+export interface IncidentListItem {
+  id: string;
+  reference: string;
+  summary: string;
+  category: IncidentCategory;
+  severity: IncidentSeverity;
+  status: IncidentStatus;
+  publicSafetyRisk: boolean;
+  requiresReview: boolean;
+  classifiedBy: ClassificationMethod;
+  confidence: number | null;
+  locationHint: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  assetId: string | null;
+  reportedOnUtc: string;
+  resolvedOnUtc: string | null;
+}
+
+export interface IncidentFilters {
+  searchTerm?: string;
+  status?: IncidentStatus;
+  category?: IncidentCategory;
+  severity?: IncidentSeverity;
+  assetId?: string;
+  openOnly?: boolean;
+  awaitingTriageOnly?: boolean;
+  safetyRiskOnly?: boolean;
+  page?: number;
+  pageSize?: number;
+  sortBy?: string;
+  sortDirection?: "Ascending" | "Descending";
+}
+
+export interface ReportIncidentInput {
+  reportText: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  reporterName?: string | null;
+  reporterContact?: string | null;
+}
+
+export interface ReportIncidentResult {
+  incidentId: string;
+  reference: string;
+  category: IncidentCategory;
+  severity: IncidentSeverity;
+  summary: string;
+  requiresReview: boolean;
+  classifiedBy: ClassificationMethod;
+  confidence: number | null;
+  matchedAssetCode: string | null;
+  possibleDuplicateOf: string | null;
+}
+
+export interface TriageIncidentInput {
+  category: IncidentCategory;
+  severity: IncidentSeverity;
+  summary?: string | null;
+  assetId?: string | null;
+}
+
+/** Ordered worst-first, the order a triage queue is actually read in. */
+export const SEVERITY_ORDER: IncidentSeverity[] = ["Critical", "High", "Moderate", "Low"];
+
+export const SEVERITY_LABEL: Record<IncidentSeverity, string> = {
+  Critical: "Critical",
+  High: "High",
+  Moderate: "Moderate",
+  Low: "Low",
+};
+
+export const INCIDENT_STATUS_LABEL: Record<IncidentStatus, string> = {
+  Reported: "Awaiting triage",
+  Triaged: "Triaged",
+  InProgress: "In progress",
+  Resolved: "Resolved",
+  Closed: "Closed",
+  Duplicate: "Duplicate",
+  Rejected: "Rejected",
+};
+
+export const CATEGORY_LABEL: Record<IncidentCategory, string> = {
+  Leak: "Leak",
+  SupplyLoss: "Supply loss",
+  WaterQuality: "Water quality",
+  PressureProblem: "Pressure problem",
+  Blockage: "Blockage",
+  StructuralDamage: "Structural damage",
+  PowerFault: "Power fault",
+  RoadDefect: "Road defect",
+  Other: "Other",
+};

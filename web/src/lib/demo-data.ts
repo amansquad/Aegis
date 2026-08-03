@@ -5,7 +5,11 @@ import type {
   AssetStatus,
   AssetType,
   AuthenticationResult,
+  ClassificationMethod,
+  IncidentListItem,
+  IncidentStatus,
 } from "./types";
+import { classifyReport } from "./incident-classifier";
 
 /**
  * A fictional water utility, used when no API is configured.
@@ -182,6 +186,143 @@ function buildAssets(count: number): Asset[] {
 }
 
 export const DEMO_ASSETS: Asset[] = buildAssets(468);
+
+/* ------------------------------------------------------------------ *
+ * Incidents
+ * ------------------------------------------------------------------ */
+
+/**
+ * Sample reports, written the way the public actually writes them: run-on sentences, no
+ * category labels, occasional venting. Each is classified by the same heuristic the real
+ * fallback path uses, so the seeded queue shows exactly what a fresh report would produce.
+ */
+const REPORT_SAMPLES = [
+  "There is water gushing up through the pavement outside number 14, it's been going for an hour and now flooding into next door's driveway.",
+  "No water at all this morning, whole street seems affected, my elderly neighbour needs it for her dialysis machine.",
+  "Water coming out of the tap is brown and smells strange, been like this since yesterday, worried about giving it to the kids.",
+  "Small drip from the hydrant on the corner, not urgent, probably just needs a washer.",
+  "The drain outside the school is completely blocked and backing up onto the playground.",
+  "Pressure has been really weak for two days now, barely a trickle from the kitchen tap.",
+  "Strong smell of gas near the pumping station on Northgate Road, also seeing a burst pipe nearby.",
+  "The road has collapsed into a sinkhole and a car has nearly gone into it, this is extremely dangerous.",
+  "Exposed live wire hanging from the substation fence after last night's storm, please send someone urgently.",
+  "Pothole in the road surface on Central Avenue, quite deep, damaged my tyre.",
+  "Street light out for the third week running outside 22 Eastvale Close.",
+  "Slight leak from the valve, honestly not urgent, just thought I'd mention it.",
+  "Sewer overflow behind the shops, smells terrible and flies everywhere.",
+  "Power cut across most of Westferry since 6pm, several houses affected.",
+  "Water main has burst on Southbank Hill, gushing across the whole street and into the school playground.",
+  "Cracked pipe visible where the road contractors were working last week, slowly seeping.",
+  "Transformer sparking on the pole near the substation, quite alarming to watch.",
+  "The cellar of my house is slowly filling with water, I think it's from the main outside.",
+  "Just a small pothole, not urgent, cosmetic really.",
+  "No supply since first thing this morning, nothing coming out of any tap in the house.",
+  "Discoloured water again, this keeps happening every few months.",
+  "Gully blocked outside the hospital entrance, water backing up during the rain this morning.",
+  "Minor drip noticed under the stopcock, occasionally, not a big deal.",
+  "Whole street flooding after what looks like a burst main near the junction, urgent please.",
+  "Hit a large pothole in the road surface and blew a tyre, road surface is in poor state.",
+  "Street light flickering on and off near the crossing, could be a hazard for traffic at night.",
+];
+
+const INCIDENT_STATUS_WEIGHTS: Record<IncidentStatus, number> = {
+  Reported: 30,
+  Triaged: 22,
+  InProgress: 14,
+  Resolved: 20,
+  Closed: 8,
+  Duplicate: 3,
+  Rejected: 3,
+};
+
+function hoursAgo(hours: number): string {
+  return new Date(Date.now() - hours * 3_600_000).toISOString();
+}
+
+function buildIncidentReference(index: number, reportedOnUtc: string): string {
+  const year = new Date(reportedOnUtc).getUTCFullYear();
+  // Deterministic 12-hex tail rather than a counter, matching why the server derives references
+  // from the identifier's random tail rather than a per-tenant sequence.
+  const tail = Math.floor(random() * 0xffffffffffff)
+    .toString(16)
+    .padStart(12, "0")
+    .toUpperCase();
+
+  return `INC-${year}-${tail}${index}`.slice(0, 20);
+}
+
+function buildIncidents(count: number): IncidentListItem[] {
+  const incidents: IncidentListItem[] = [];
+
+  for (let index = 0; index < count; index++) {
+    const reportText = REPORT_SAMPLES[index % REPORT_SAMPLES.length];
+    const classification = classifyReport(reportText);
+    const district = DISTRICTS[(index * 3) % DISTRICTS.length];
+
+    const ageHours = 1 + Math.floor(random() * 900);
+    const reportedOnUtc = hoursAgo(ageHours);
+
+    const latitude = district.lat + (random() - 0.5) * 0.03;
+    const longitude = district.lon + (random() - 0.5) * 0.045;
+    const hasPosition = random() > 0.1;
+
+    const status = weighted(INCIDENT_STATUS_WEIGHTS);
+    const isOpen = status === "Reported" || status === "Triaged" || status === "InProgress";
+
+    // A minority were classified by a live model in production, at high confidence and already
+    // clear of review — this is what the queue looks like once OpenRouter is configured.
+    const classifiedByModel = random() > 0.72;
+    const classifiedBy: ClassificationMethod = classifiedByModel ? "Model" : "Heuristic";
+    const confidence = classifiedByModel
+      ? Math.min(0.99, 0.86 + random() * 0.13)
+      : classification.confidence;
+
+    const requiresReview =
+      classification.publicSafetyRisk || !classifiedByModel || confidence < 0.85;
+
+    const resolvedOnUtc =
+      status === "Resolved" || status === "Closed"
+        ? hoursAgo(Math.max(ageHours - Math.floor(random() * ageHours * 0.6), 1))
+        : null;
+
+    // Roughly a third of positioned incidents are close enough to a real asset to have been
+    // linked, mirroring the proximity match the server performs on report.
+    const nearbyAsset =
+      hasPosition && random() > 0.55
+        ? DEMO_ASSETS.filter(
+            (a) => a.latitude !== null && Math.abs(a.latitude - latitude) < 0.01,
+          )[0]
+        : undefined;
+
+    incidents.push({
+      id: `demo-incident-${index.toString().padStart(4, "0")}`,
+      reference: buildIncidentReference(index, reportedOnUtc),
+      summary: classification.summary,
+      category: classification.category,
+      severity: classification.severity,
+      status,
+      publicSafetyRisk: classification.publicSafetyRisk,
+      requiresReview: isOpen && requiresReview,
+      classifiedBy,
+      confidence: Number(confidence.toFixed(2)),
+      locationHint: classification.locationHint,
+      latitude: hasPosition ? Number(latitude.toFixed(6)) : null,
+      longitude: hasPosition ? Number(longitude.toFixed(6)) : null,
+      assetId: nearbyAsset?.id ?? null,
+      reportedOnUtc,
+      resolvedOnUtc,
+    });
+  }
+
+  return incidents;
+}
+
+/**
+ * Seeded once at module load. Mutated in place by the demo API layer as reports are submitted
+ * and triaged during a session — held in memory only, exactly like the rest of the demo estate,
+ * so a reload returns to this baseline rather than persisting a visitor's changes.
+ */
+export const DEMO_INCIDENTS: IncidentListItem[] = buildIncidents(46);
 
 export const DEMO_USER: AuthenticationResult = {
   accessToken: "demo",
