@@ -8,6 +8,9 @@ import type {
   ClassificationMethod,
   IncidentListItem,
   IncidentStatus,
+  WorkOrderListItem,
+  WorkOrderPriority,
+  WorkOrderStatus,
 } from "./types";
 import { classifyReport } from "./incident-classifier";
 
@@ -324,6 +327,124 @@ function buildIncidents(count: number): IncidentListItem[] {
  */
 export const DEMO_INCIDENTS: IncidentListItem[] = buildIncidents(46);
 
+/* ------------------------------------------------------------------ *
+ * Work orders
+ * ------------------------------------------------------------------ */
+
+/** The field crew a dispatcher would actually be choosing between. */
+export const DEMO_TECHNICIANS = [
+  { id: "demo-tech-0", name: "Priya Chandran" },
+  { id: "demo-tech-1", name: "Marcus Webb" },
+  { id: "demo-tech-2", name: "Farah Idris" },
+  { id: "demo-tech-3", name: "Tom Halloran" },
+];
+
+export function technicianName(userId: string | null): string | null {
+  return DEMO_TECHNICIANS.find((t) => t.id === userId)?.name ?? null;
+}
+
+const WORK_ORDER_TITLES = [
+  "Replace failed isolation valve",
+  "Clear blocked gully",
+  "Repair burst main",
+  "Investigate low pressure",
+  "Replace faulty street light",
+  "Inspect reported leak",
+  "Repressurise section after repair",
+  "Fit new stopcock",
+  "Clear surface drain",
+  "Replace hydrant cap",
+];
+
+const WORK_ORDER_STATUS_WEIGHTS: Record<WorkOrderStatus, number> = {
+  Draft: 20,
+  Scheduled: 22,
+  InProgress: 16,
+  Completed: 34,
+  Cancelled: 8,
+};
+
+const WORK_ORDER_PRIORITY_WEIGHTS: Record<WorkOrderPriority, number> = {
+  Critical: 10,
+  High: 28,
+  Medium: 42,
+  Low: 20,
+};
+
+function buildWorkOrderReference(index: number, createdOnUtc: string): string {
+  const year = new Date(createdOnUtc).getUTCFullYear();
+  const tail = Math.floor(random() * 0xffffffffffff)
+    .toString(16)
+    .padStart(12, "0")
+    .toUpperCase();
+
+  return `WO-${year}-${tail}${index}`.slice(0, 20);
+}
+
+/**
+ * Roughly a third of work orders trace back to a reported incident, mirroring how a dispatcher
+ * actually works: some jobs come from a member of the public's report, most come from a
+ * supervisor scheduling maintenance directly against an asset.
+ */
+function buildWorkOrders(count: number): WorkOrderListItem[] {
+  const workOrders: WorkOrderListItem[] = [];
+  const openIncidents = DEMO_INCIDENTS.filter((i) => i.assetId !== null);
+
+  for (let index = 0; index < count; index++) {
+    const status = weighted(WORK_ORDER_STATUS_WEIGHTS);
+    const priority = weighted(WORK_ORDER_PRIORITY_WEIGHTS);
+    const isAssigned = status !== "Draft";
+
+    const ageHours = 1 + Math.floor(random() * 1200);
+    const createdOnUtc = hoursAgo(ageHours);
+
+    const fromIncident = random() > 0.65 && openIncidents.length > 0;
+    const incident = fromIncident ? pick(openIncidents) : null;
+    const asset = incident
+      ? DEMO_ASSETS.find((a) => a.id === incident.assetId)
+      : random() > 0.3
+        ? pick(DEMO_ASSETS)
+        : null;
+
+    const scheduledFor =
+      isAssigned && (status === "Scheduled" || status === "InProgress")
+        ? new Date(Date.now() + Math.floor(random() * 5) * 86_400_000).toISOString()
+        : null;
+
+    const startedOnUtc =
+      status === "InProgress" || status === "Completed"
+        ? hoursAgo(Math.max(ageHours - Math.floor(random() * ageHours * 0.5), 1))
+        : null;
+
+    const completedOnUtc =
+      status === "Completed"
+        ? hoursAgo(Math.max(ageHours - Math.floor(random() * ageHours * 0.7), 0))
+        : null;
+
+    workOrders.push({
+      id: `demo-workorder-${index.toString().padStart(4, "0")}`,
+      reference: buildWorkOrderReference(index, createdOnUtc),
+      title: pick(WORK_ORDER_TITLES),
+      status,
+      priority,
+      assetId: asset?.id ?? null,
+      incidentId: incident?.id ?? null,
+      assignedToUserId: isAssigned ? pick(DEMO_TECHNICIANS).id : null,
+      scheduledFor,
+      startedOnUtc,
+      completedOnUtc,
+      createdOnUtc,
+    });
+  }
+
+  // Newest first, matching the server's default sort.
+  return workOrders.sort(
+    (a, b) => new Date(b.createdOnUtc).getTime() - new Date(a.createdOnUtc).getTime(),
+  );
+}
+
+export const DEMO_WORK_ORDERS: WorkOrderListItem[] = buildWorkOrders(58);
+
 export const DEMO_USER: AuthenticationResult = {
   accessToken: "demo",
   refreshToken: "demo",
@@ -345,6 +466,9 @@ export const DEMO_USER: AuthenticationResult = {
       "users.view",
       "incidents.view",
       "workorders.view",
+      "workorders.create",
+      "workorders.assign",
+      "workorders.complete",
       "analytics.operational.view",
       "analytics.executive.view",
     ],

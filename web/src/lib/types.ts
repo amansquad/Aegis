@@ -259,3 +259,82 @@ export const CATEGORY_LABEL: Record<IncidentCategory, string> = {
   RoadDefect: "Road defect",
   Other: "Other",
 };
+
+/* ------------------------------------------------------------------ *
+ * Work orders
+ * ------------------------------------------------------------------ */
+
+export type WorkOrderStatus = "Draft" | "Scheduled" | "InProgress" | "Completed" | "Cancelled";
+
+export type WorkOrderPriority = "Low" | "Medium" | "High" | "Critical";
+
+export interface WorkOrderListItem {
+  id: string;
+  reference: string;
+  title: string;
+  status: WorkOrderStatus;
+  priority: WorkOrderPriority;
+  assetId: string | null;
+  incidentId: string | null;
+  assignedToUserId: string | null;
+  scheduledFor: string | null;
+  startedOnUtc: string | null;
+  completedOnUtc: string | null;
+  createdOnUtc: string;
+}
+
+export interface WorkOrderFilters {
+  status?: WorkOrderStatus;
+  priority?: WorkOrderPriority;
+  assetId?: string;
+  incidentId?: string;
+  assignedToUserId?: string;
+  openOnly?: boolean;
+  unassignedOnly?: boolean;
+  searchTerm?: string;
+  page?: number;
+  pageSize?: number;
+  sortBy?: string;
+  sortDirection?: "Ascending" | "Descending";
+}
+
+export interface CreateWorkOrderInput {
+  title: string;
+  description?: string | null;
+  priority: WorkOrderPriority;
+  assetId?: string | null;
+  incidentId?: string | null;
+}
+
+export interface AssignWorkOrderInput {
+  userId: string;
+  scheduledFor?: string | null;
+}
+
+/** Ordered worst-first, the order a dispatch board is actually read in. */
+export const WORK_ORDER_PRIORITY_ORDER: WorkOrderPriority[] = ["Critical", "High", "Medium", "Low"];
+
+export const WORK_ORDER_PRIORITY_LABEL: Record<WorkOrderPriority, string> = {
+  Critical: "Critical",
+  High: "High",
+  Medium: "Medium",
+  Low: "Low",
+};
+
+export const WORK_ORDER_STATUS_LABEL: Record<WorkOrderStatus, string> = {
+  Draft: "Awaiting assignment",
+  Scheduled: "Scheduled",
+  InProgress: "In progress",
+  Completed: "Completed",
+  Cancelled: "Cancelled",
+};
+
+/**
+ * Just enough of a user record to populate an assignment picker — not the full management
+ * projection, since dispatch is the only thing this surface needs a directory for.
+ */
+export interface AssignableUser {
+  id: string;
+  displayName: string;
+  roles: string[];
+}

@@ -1,15 +1,20 @@
-import { DEMO_ASSETS, DEMO_INCIDENTS, DEMO_USER } from "./demo-data";
+import { DEMO_ASSETS, DEMO_INCIDENTS, DEMO_TECHNICIANS, DEMO_USER, DEMO_WORK_ORDERS } from "./demo-data";
 import { classifyReport, distanceInMetres } from "./incident-classifier";
 import type {
   Asset,
   AssetFilters,
+  AssignableUser,
+  AssignWorkOrderInput,
   AuthenticationResult,
+  CreateWorkOrderInput,
   IncidentFilters,
   IncidentListItem,
   PagedResult,
   ReportIncidentInput,
   ReportIncidentResult,
   TriageIncidentInput,
+  WorkOrderFilters,
+  WorkOrderListItem,
 } from "./types";
 
 /**
@@ -213,6 +218,78 @@ function demoIncidentList(filters: IncidentFilters): PagedResult<IncidentListIte
 }
 
 /**
+ * The in-session work order store, mutable for the same reason `demoIncidents` is: dispatch,
+ * assignment and completion all happen from this UI during a session.
+ */
+let demoWorkOrders: WorkOrderListItem[] = [...DEMO_WORK_ORDERS];
+
+const OPEN_WORK_ORDER_STATUSES = new Set(["Draft", "Scheduled", "InProgress"]);
+
+function demoWorkOrderList(filters: WorkOrderFilters): PagedResult<WorkOrderListItem> {
+  const term = filters.searchTerm?.trim().toLowerCase();
+
+  let rows = demoWorkOrders.filter((workOrder) => {
+    if (filters.status && workOrder.status !== filters.status) return false;
+    if (filters.priority && workOrder.priority !== filters.priority) return false;
+    if (filters.assetId && workOrder.assetId !== filters.assetId) return false;
+    if (filters.incidentId && workOrder.incidentId !== filters.incidentId) return false;
+    if (filters.assignedToUserId && workOrder.assignedToUserId !== filters.assignedToUserId) return false;
+    if (filters.openOnly && !OPEN_WORK_ORDER_STATUSES.has(workOrder.status)) return false;
+    if (filters.unassignedOnly && workOrder.status !== "Draft") return false;
+
+    if (term) {
+      const haystack = `${workOrder.title} ${workOrder.reference}`.toLowerCase();
+      if (!haystack.includes(term)) return false;
+    }
+
+    return true;
+  });
+
+  const sortBy = filters.sortBy ?? "createdOnUtc";
+  const descending = (filters.sortDirection ?? "Descending") === "Descending";
+
+  rows = [...rows].sort((a, b) => {
+    const left = a[sortBy as keyof WorkOrderListItem];
+    const right = b[sortBy as keyof WorkOrderListItem];
+
+    if (left === null) return 1;
+    if (right === null) return -1;
+
+    const comparison =
+      typeof left === "number" && typeof right === "number"
+        ? left - right
+        : String(left).localeCompare(String(right));
+
+    return descending ? -comparison : comparison;
+  });
+
+  const pageSize = Math.min(filters.pageSize ?? 25, MAX_PAGE_SIZE);
+  const page = Math.max(filters.page ?? 1, 1);
+  const start = (page - 1) * pageSize;
+  const items = rows.slice(start, start + pageSize);
+  const totalPages = Math.ceil(rows.length / pageSize);
+
+  return {
+    items,
+    page,
+    pageSize,
+    totalCount: rows.length,
+    totalPages,
+    hasPreviousPage: page > 1,
+    hasNextPage: page < totalPages,
+  };
+}
+
+function buildDemoWorkOrderReference(createdOnUtc: string): string {
+  const year = new Date(createdOnUtc).getUTCFullYear();
+  const tail = Array.from({ length: 12 }, () =>
+    "0123456789ABCDEF"[Math.floor(Math.random() * 16)],
+  ).join("");
+
+  return `WO-${year}-${tail}`;
+}
+
+/**
  * Resolves the asset a report concerns from our own data, exactly as the server does: a quoted
  * code is tried first and is only ever a lookup, then position within 150m. Nothing the
  * classifier returned is trusted as an identity — a code that does not exist in this estate
@@ -290,7 +367,7 @@ function buildDemoReference(reportedOnUtc: string): string {
  * Public surface
  * ------------------------------------------------------------------ */
 
-function toQueryString(filters: AssetFilters | IncidentFilters): string {
+function toQueryString(filters: AssetFilters | IncidentFilters | WorkOrderFilters): string {
   const params = new URLSearchParams();
 
   for (const [key, value] of Object.entries(filters)) {
@@ -461,6 +538,184 @@ export const api = {
     await request<void>(`/api/v1/incidents/${incidentId}/resolve`, {
       method: "POST",
       body: JSON.stringify({ notes }),
+    }, token);
+  },
+
+  async listAssignableUsers(token?: string): Promise<AssignableUser[]> {
+    if (IS_DEMO) {
+      await new Promise((resolve) => setTimeout(resolve, 120));
+
+      return DEMO_TECHNICIANS.map((technician) => ({
+        id: technician.id,
+        displayName: technician.name,
+        roles: ["Technician"],
+      }));
+    }
+
+    const page = await request<PagedResult<{ id: string; displayName: string; roles: string[] }>>(
+      "/api/v1/users?pageSize=100&status=Active",
+      { method: "GET" },
+      token,
+    );
+
+    return page.items;
+  },
+
+  async listWorkOrders(
+    filters: WorkOrderFilters,
+    token?: string,
+  ): Promise<PagedResult<WorkOrderListItem>> {
+    if (IS_DEMO) {
+      await new Promise((resolve) => setTimeout(resolve, 180));
+      return demoWorkOrderList(filters);
+    }
+
+    return request<PagedResult<WorkOrderListItem>>(
+      `/api/v1/work-orders?${toQueryString(filters)}`,
+      { method: "GET" },
+      token,
+    );
+  },
+
+  async createWorkOrder(input: CreateWorkOrderInput, token?: string): Promise<string> {
+    if (IS_DEMO) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      if (!input.title.trim()) {
+        throw new ApiError("A title is required.", 400);
+      }
+
+      const now = new Date().toISOString();
+
+      const workOrder: WorkOrderListItem = {
+        id: `demo-workorder-${crypto.randomUUID()}`,
+        reference: buildDemoWorkOrderReference(now),
+        title: input.title.trim(),
+        status: "Draft",
+        priority: input.priority,
+        assetId: input.assetId ?? null,
+        incidentId: input.incidentId ?? null,
+        assignedToUserId: null,
+        scheduledFor: null,
+        startedOnUtc: null,
+        completedOnUtc: null,
+        createdOnUtc: now,
+      };
+
+      demoWorkOrders = [workOrder, ...demoWorkOrders];
+
+      return workOrder.id;
+    }
+
+    return request<string>("/api/v1/work-orders", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }, token);
+  },
+
+  async assignWorkOrder(
+    workOrderId: string,
+    input: AssignWorkOrderInput,
+    token?: string,
+  ): Promise<void> {
+    if (IS_DEMO) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const knownUser =
+        input.userId === DEMO_USER.user.id ||
+        DEMO_TECHNICIANS.some((technician) => technician.id === input.userId);
+
+      if (!knownUser) {
+        throw new ApiError("That technician was not found.", 404, "User.NotFound");
+      }
+
+      demoWorkOrders = demoWorkOrders.map((workOrder) =>
+        workOrder.id === workOrderId
+          ? {
+              ...workOrder,
+              assignedToUserId: input.userId,
+              scheduledFor: input.scheduledFor ?? workOrder.scheduledFor,
+              status: workOrder.status === "Draft" ? "Scheduled" : workOrder.status,
+            }
+          : workOrder,
+      );
+
+      return;
+    }
+
+    await request<void>(`/api/v1/work-orders/${workOrderId}/assign`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }, token);
+  },
+
+  async startWorkOrder(workOrderId: string, token?: string): Promise<void> {
+    if (IS_DEMO) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      demoWorkOrders = demoWorkOrders.map((workOrder) =>
+        workOrder.id === workOrderId
+          ? {
+              ...workOrder,
+              status: "InProgress",
+              startedOnUtc: workOrder.startedOnUtc ?? new Date().toISOString(),
+            }
+          : workOrder,
+      );
+
+      return;
+    }
+
+    await request<void>(`/api/v1/work-orders/${workOrderId}/start`, { method: "POST" }, token);
+  },
+
+  /**
+   * Completing a work order that traces back to an incident resolves that incident too, mirroring
+   * the server's loop-closing behaviour exactly — the demo would otherwise misrepresent the one
+   * property of this feature most worth showing.
+   */
+  async completeWorkOrder(workOrderId: string, notes: string | null, token?: string): Promise<void> {
+    if (IS_DEMO) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const workOrder = demoWorkOrders.find((w) => w.id === workOrderId);
+      const now = new Date().toISOString();
+
+      demoWorkOrders = demoWorkOrders.map((w) =>
+        w.id === workOrderId ? { ...w, status: "Completed", completedOnUtc: now } : w,
+      );
+
+      if (workOrder?.incidentId) {
+        demoIncidents = demoIncidents.map((incident) =>
+          incident.id === workOrder.incidentId && incident.status !== "Resolved"
+            ? { ...incident, status: "Resolved", resolvedOnUtc: now }
+            : incident,
+        );
+      }
+
+      return;
+    }
+
+    await request<void>(`/api/v1/work-orders/${workOrderId}/complete`, {
+      method: "POST",
+      body: JSON.stringify({ notes }),
+    }, token);
+  },
+
+  async cancelWorkOrder(workOrderId: string, reason: string | null, token?: string): Promise<void> {
+    if (IS_DEMO) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      demoWorkOrders = demoWorkOrders.map((workOrder) =>
+        workOrder.id === workOrderId ? { ...workOrder, status: "Cancelled" } : workOrder,
+      );
+
+      return;
+    }
+
+    await request<void>(`/api/v1/work-orders/${workOrderId}/cancel`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
     }, token);
   },
 };

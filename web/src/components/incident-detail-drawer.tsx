@@ -7,9 +7,11 @@ import { useSession } from "@/lib/store";
 import {
   CATEGORY_LABEL,
   SEVERITY_LABEL,
+  WORK_ORDER_PRIORITY_LABEL,
   type IncidentCategory,
   type IncidentListItem,
   type IncidentSeverity,
+  type WorkOrderPriority,
 } from "@/lib/types";
 import { formatCoordinate, relativeAge } from "@/lib/utils";
 import { Button, Field, Select } from "@/components/ui";
@@ -20,6 +22,16 @@ import {
   SafetyRiskBanner,
   SeverityBadge,
 } from "@/components/incident-ui";
+
+/** The incident severity a dispatcher just confirmed maps to a sensible starting priority — a
+ * suggestion the dispatcher can still override, never a silent copy. See the backend's own note on
+ * `WorkOrder.Priority` for why the two scales are kept distinct. */
+const SUGGESTED_PRIORITY: Record<IncidentSeverity, WorkOrderPriority> = {
+  Critical: "Critical",
+  High: "High",
+  Moderate: "Medium",
+  Low: "Low",
+};
 
 const OPEN_STATUSES = new Set(["Reported", "Triaged", "InProgress"]);
 
@@ -45,13 +57,18 @@ export function IncidentDetailDrawer({
   onChanged: () => void;
 }) {
   const token = useSession((state) => state.token);
+  const hasPermission = useSession((state) => state.hasPermission);
 
   const [category, setCategory] = useState<IncidentCategory>(incident.category);
   const [severity, setSeverity] = useState<IncidentSeverity>(incident.severity);
   const [summary, setSummary] = useState(incident.summary);
   const [notes, setNotes] = useState("");
+  const [workOrderPriority, setWorkOrderPriority] = useState<WorkOrderPriority>(
+    SUGGESTED_PRIORITY[incident.severity],
+  );
+  const [dispatched, setDispatched] = useState(false);
 
-  const [busy, setBusy] = useState<"triage" | "resolve" | null>(null);
+  const [busy, setBusy] = useState<"triage" | "resolve" | "dispatch" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const isOpen = OPEN_STATUSES.has(incident.status);
@@ -86,6 +103,29 @@ export function IncidentDetailDrawer({
       onClose();
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : "Could not resolve this incident.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleDispatch() {
+    setError(null);
+    setBusy("dispatch");
+
+    try {
+      await api.createWorkOrder(
+        {
+          title: incident.summary.slice(0, 200),
+          priority: workOrderPriority,
+          assetId: incident.assetId,
+          incidentId: incident.id,
+        },
+        token ?? undefined,
+      );
+
+      setDispatched(true);
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.message : "Could not dispatch a work order.");
     } finally {
       setBusy(null);
     }
@@ -222,6 +262,55 @@ export function IncidentDetailDrawer({
                   Confirm triage
                 </Button>
               </div>
+
+              {hasPermission("workorders.create") && (
+                <>
+                  <hr className="border-line" />
+
+                  <div>
+                    <p className="text-[11px] font-medium uppercase tracking-wider text-ink-faint">
+                      Dispatch
+                    </p>
+                    <p className="mt-1 text-[12px] text-ink-faint">
+                      The severity just confirmed suggests a starting priority below — change it if
+                      the dispatcher&apos;s judgement differs.
+                    </p>
+
+                    {dispatched ? (
+                      <p className="mt-3 rounded-[--radius-control] bg-nominal-dim px-3 py-2 text-[13px] text-nominal">
+                        Work order dispatched. Find it in the work orders queue.
+                      </p>
+                    ) : (
+                      <>
+                        <div className="mt-3">
+                          <Field label="Priority">
+                            <Select
+                              value={workOrderPriority}
+                              onChange={(event) =>
+                                setWorkOrderPriority(event.target.value as WorkOrderPriority)
+                              }
+                            >
+                              {Object.entries(WORK_ORDER_PRIORITY_LABEL).map(([key, label]) => (
+                                <option key={key} value={key}>
+                                  {label}
+                                </option>
+                              ))}
+                            </Select>
+                          </Field>
+                        </div>
+
+                        <Button
+                          className="mt-3 w-full justify-center"
+                          loading={busy === "dispatch"}
+                          onClick={handleDispatch}
+                        >
+                          Dispatch work order
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </>
+              )}
 
               <hr className="border-line" />
 

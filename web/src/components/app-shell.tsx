@@ -23,7 +23,7 @@ const NAV = [
   { href: "/dashboard", label: "Operations", icon: LayoutDashboard },
   { href: "/assets", label: "Asset registry", icon: Activity },
   { href: "/incidents", label: "Incidents", icon: AlertTriangle },
-  { href: "/work-orders", label: "Work orders", icon: ClipboardList, pending: true },
+  { href: "/work-orders", label: "Work orders", icon: ClipboardList },
   { href: "/maintenance", label: "Maintenance", icon: Wrench, pending: true },
 ] as const;
 
