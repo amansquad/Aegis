@@ -1,3 +1,5 @@
+using System.Net.Http.Headers;
+using Aegis.Application.Abstractions.Ai;
 using Aegis.Application.Abstractions.Caching;
 using Aegis.Application.Abstractions.Events;
 using Aegis.Application.Abstractions.Notifications;
@@ -7,6 +9,7 @@ using Aegis.Application.Abstractions.Multitenancy;
 using Aegis.Application.Abstractions.Persistence;
 using Aegis.Application.Abstractions.Requests;
 using Aegis.Application.Abstractions.Security;
+using Aegis.Infrastructure.Ai;
 using Aegis.Infrastructure.Caching;
 using Aegis.Infrastructure.Events;
 using Aegis.Infrastructure.Multitenancy;
@@ -42,6 +45,7 @@ public static class DependencyInjection
         services.AddCaching(configuration);
         services.AddSecurity(configuration);
         services.AddNotifications(configuration);
+        services.AddAi(configuration);
 
         return services;
     }
@@ -158,6 +162,76 @@ public static class DependencyInjection
         });
 
         services.AddScoped<IAegisDbContext>(sp => sp.GetRequiredService<AegisDbContext>());
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the incident extractor, choosing the model adapter or the rule-based fallback.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The choice is made once at startup from whether a key is present, rather than per request.
+    /// A per-request check would mean the behaviour of the intake form depended on configuration
+    /// state that could differ between two instances behind the same load balancer.
+    /// </para>
+    /// <para>
+    /// Falling back rather than failing to start is deliberate: a developer with no key still gets
+    /// a working intake form and a green test suite, and a production deployment that loses its
+    /// key degrades to human classification instead of losing the ability to accept reports at all.
+    /// The log line at startup says plainly which one is active, so nobody has to guess.
+    /// </para>
+    /// </remarks>
+    private static IServiceCollection AddAi(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        services
+            .AddOptions<AiOptions>()
+            .Bind(configuration.GetSection(AiOptions.SectionName))
+            .Validate(
+                o => o.TimeoutSeconds is > 0 and <= 60,
+                "Ai:TimeoutSeconds must be between 1 and 60. This runs while a member of the " +
+                "public waits on a form.")
+            .ValidateOnStart();
+
+        var ai = configuration.GetSection(AiOptions.SectionName).Get<AiOptions>() ?? new AiOptions();
+
+        if (!ai.IsConfigured)
+        {
+            services.AddSingleton<IIncidentExtractor, HeuristicIncidentExtractor>();
+
+            return services;
+        }
+
+        services
+            .AddHttpClient<IIncidentExtractor, OpenRouterIncidentExtractor>(client =>
+            {
+                client.BaseAddress = new Uri($"{ai.BaseUrl.TrimEnd('/')}/");
+                client.Timeout = TimeSpan.FromSeconds(ai.TimeoutSeconds);
+
+                client.DefaultRequestHeaders.Authorization =
+                    new AuthenticationHeaderValue("Bearer", ai.ApiKey);
+
+                // OpenRouter attribution headers. Optional, and only ever carrying values we
+                // configured — never anything derived from a report.
+                if (!string.IsNullOrWhiteSpace(ai.SiteUrl))
+                {
+                    client.DefaultRequestHeaders.Add("HTTP-Referer", ai.SiteUrl);
+                }
+
+                client.DefaultRequestHeaders.Add("X-Title", ai.SiteName);
+            })
+            // One retry on a transient fault, no more. The caller is a person waiting on a form,
+            // and a long retry ladder turns a slow provider into an abandoned report. Failing
+            // through to manual entry is the better outcome past the first attempt.
+            .AddStandardResilienceHandler(resilience =>
+            {
+                resilience.Retry.MaxRetryAttempts = 1;
+                resilience.AttemptTimeout.Timeout = TimeSpan.FromSeconds(ai.TimeoutSeconds);
+                resilience.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(ai.TimeoutSeconds * 2.5);
+                resilience.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(ai.TimeoutSeconds * 4);
+            });
 
         return services;
     }
