@@ -326,6 +326,7 @@ Aegis/
 │   ├── Aegis.Domain.UnitTests/        # Domain logic + architecture enforcement.
 │   ├── Aegis.Application.UnitTests/   # Handler behaviour against substituted ports.
 │   └── Aegis.Api.IntegrationTests/    # Full stack against Testcontainers SQL Server + Redis.
+├── web/                        # Next.js frontend. Vercel's Root Directory must point here.
 ├── docs/                       # Architecture decision records, ER diagram, API reference.
 ├── Directory.Build.props       # Compiler settings for every project.
 ├── Directory.Packages.props    # Central package versions.
@@ -336,11 +337,23 @@ Aegis/
 
 ## Getting started
 
+### Live demo
+
+**https://aegis-plum-omega.vercel.app** — the frontend, deployed with a seeded estate of 468 assets
+across five districts.
+
+No API is deployed, so the app runs in demo mode: `web/src/lib/api.ts` serves an in-memory dataset
+whenever `NEXT_PUBLIC_API_URL` is unset. The demo path implements the same signatures, filtering,
+sorting and paging semantics as the real client, so no component branches on which one is active —
+which is what stops the demo rotting into a separate, half-true version of the product.
+
+Set `NEXT_PUBLIC_API_URL` and every call goes to the real Aegis API instead.
+
 ### Prerequisites
 
 - .NET SDK 9.0
 - Docker Desktop (SQL Server, Redis, and the integration test suite)
-- Node.js 20+ (frontend, once added)
+- Node.js 20+ (frontend)
 
 ### Run everything with Docker Compose
 

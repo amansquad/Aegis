@@ -1,0 +1,203 @@
+@import "tailwindcss";
+
+/*
+  AEGIS — control-room visual world.
+
+  Dark is the default because of the use scene, not the category. Duty engineers and dispatchers
+  read this at 3am in a room where every other screen is dark, and a light interface there is a
+  flashlight in the face. Light exists for the daytime executive who lives in spreadsheets, and it
+  is a real second theme rather than an inverted afterthought — the signal hues are re-picked, not
+  reused, because #34d399 reads correctly on near-black and fails contrast on white.
+*/
+
+@theme {
+  /* Surfaces: four steps the eye can name — the room, the panel, the raised element,
+     the thing under the cursor. */
+  --color-void: #07090c;
+  --color-surface: #0d1117;
+  --color-raised: #141a22;
+  --color-overlay: #1b232d;
+
+  --color-line: #222b36;
+  --color-line-strong: #303c4a;
+
+  /* Text tinted toward the surface hue rather than neutral grey, so secondary text sits in the
+     same room as the panel behind it. */
+  --color-ink: #e8eef6;
+  --color-ink-muted: #9aa8ba;
+  --color-ink-faint: #71809a;
+
+  /* Signal colour is the scarcest resource here. Five meanings, no decoration. */
+  --color-signal: #38bdf8;
+  --color-nominal: #34d399;
+  --color-watch: #fbbf24;
+  --color-degraded: #fb923c;
+  --color-failed: #f87171;
+
+  --color-signal-dim: #082f49;
+  --color-nominal-dim: #05271c;
+  --color-watch-dim: #332506;
+  --color-degraded-dim: #351a07;
+  --color-failed-dim: #3a1417;
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  /* Monospace is for values an operator reads as measurement — asset codes, counts,
+     coordinates, timestamps. Never as a costume for "technical". */
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", monospace;
+
+  --radius-panel: 10px;
+  --radius-control: 7px;
+
+  /* Real depth: offset plus blur, never a zero-offset halo. */
+  --shadow-panel: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px -12px rgb(0 0 0 / 0.7);
+  --shadow-pop: 0 4px 10px -2px rgb(0 0 0 / 0.5), 0 18px 44px -18px rgb(0 0 0 / 0.85);
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+:root[data-theme="light"] {
+  --color-void: #eef2f7;
+  --color-surface: #ffffff;
+  --color-raised: #f6f8fc;
+  --color-overlay: #ffffff;
+
+  --color-line: #dde4ee;
+  --color-line-strong: #c0cad9;
+
+  --color-ink: #0f172a;
+  --color-ink-muted: #4d5d75;
+  --color-ink-faint: #6b7a92;
+
+  --color-signal: #0369a1;
+  --color-nominal: #047857;
+  --color-watch: #92620a;
+  --color-degraded: #c2410c;
+  --color-failed: #b91c1c;
+
+  --color-signal-dim: #dbeafe;
+  --color-nominal-dim: #d1fae5;
+  --color-watch-dim: #fdf0ce;
+  --color-degraded-dim: #ffedd5;
+  --color-failed-dim: #fee2e2;
+
+  --shadow-panel: 0 1px 2px rgb(15 23 42 / 0.06), 0 8px 24px -14px rgb(15 23 42 / 0.16);
+  --shadow-pop: 0 4px 10px -2px rgb(15 23 42 / 0.08), 0 18px 44px -18px rgb(15 23 42 / 0.22);
+}
+
+html {
+  color-scheme: dark;
+  background: var(--color-void);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+body {
+  background: var(--color-void);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Numerals must not jitter as values tick. */
+.tabular {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-signal);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::selection {
+  background: var(--color-signal);
+  color: var(--color-void);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--color-line-strong);
+  border-radius: 99px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--color-ink-faint);
+  background-clip: content-box;
+}
+
+/*
+  The shell's one authored moment: panels resolve into place as the console comes online.
+  Exponential ease-out, and the default state is already visible — a failed animation leaves
+  readable content rather than a blank screen.
+*/
+@keyframes resolve-in {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+    filter: blur(4px);
+  }
+}
+
+.resolve {
+  animation: resolve-in 0.55s var(--ease-out-expo) backwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---- Map ---- */
+
+.leaflet-container {
+  background: var(--color-void) !important;
+  font-family: var(--font-sans) !important;
+}
+
+.leaflet-control-attribution {
+  background: color-mix(in oklab, var(--color-surface) 90%, transparent) !important;
+  color: var(--color-ink-faint) !important;
+  font-size: 10px !important;
+}
+
+.leaflet-control-attribution a {
+  color: var(--color-ink-muted) !important;
+}
+
+.leaflet-control-zoom a {
+  background: var(--color-raised) !important;
+  color: var(--color-ink) !important;
+  border-color: var(--color-line) !important;
+}
+
+.leaflet-control-zoom a:hover {
+  background: var(--color-overlay) !important;
+}
+
+/*
+  A dark basemap without a paid tile provider: OpenStreetMap's raster tiles are inverted and
+  desaturated in the browser. No API key, and it keeps the map in the same room as the console.
+  Left alone in light theme, where the tiles are already right.
+*/
+:root:not([data-theme="light"]) .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.93) saturate(0.5) contrast(0.96);
+}
