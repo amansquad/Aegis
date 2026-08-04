@@ -155,6 +155,12 @@ export function WorkOrderDetailDrawer({
                 <dd className="tabular mt-0.5 text-ink">{workOrder.incidentId}</dd>
               </div>
             )}
+            {workOrder.maintenancePlanId && (
+              <div className="col-span-2">
+                <dt className="text-ink-faint">Generated from plan</dt>
+                <dd className="tabular mt-0.5 text-ink">{workOrder.maintenancePlanId}</dd>
+              </div>
+            )}
             {workOrder.startedOnUtc && (
               <div>
                 <dt className="text-ink-faint">Started</dt>

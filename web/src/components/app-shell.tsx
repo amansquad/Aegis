@@ -24,7 +24,7 @@ const NAV = [
   { href: "/assets", label: "Asset registry", icon: Activity },
   { href: "/incidents", label: "Incidents", icon: AlertTriangle },
   { href: "/work-orders", label: "Work orders", icon: ClipboardList },
-  { href: "/maintenance", label: "Maintenance", icon: Wrench, pending: true },
+  { href: "/maintenance", label: "Maintenance", icon: Wrench },
 ] as const;
 
 function ThemeToggle() {

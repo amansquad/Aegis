@@ -38,7 +38,8 @@ public sealed class WorkOrder : AggregateRoot<Guid>, ITenantOwned, IAuditableEnt
         string? description,
         WorkOrderPriority priority,
         Guid? assetId,
-        Guid? incidentId) : base(id)
+        Guid? incidentId,
+        Guid? maintenancePlanId) : base(id)
     {
         OrganizationId = organizationId;
         Reference = reference;
@@ -47,6 +48,7 @@ public sealed class WorkOrder : AggregateRoot<Guid>, ITenantOwned, IAuditableEnt
         Priority = priority;
         AssetId = assetId;
         IncidentId = incidentId;
+        MaintenancePlanId = maintenancePlanId;
         Status = WorkOrderStatus.Draft;
     }
 
@@ -89,6 +91,17 @@ public sealed class WorkOrder : AggregateRoot<Guid>, ITenantOwned, IAuditableEnt
     /// is optional rather than a required parent.
     /// </remarks>
     public Guid? IncidentId { get; private set; }
+
+    /// <summary>
+    /// The maintenance plan this work order was generated from, when it was.
+    /// </summary>
+    /// <remarks>
+    /// Not every work order comes from a schedule — plenty are dispatched directly against an
+    /// asset or in response to an incident — so this is optional in exactly the same way
+    /// <see cref="IncidentId"/> is. Completing a work order that carries this advances the plan's
+    /// next due date, the same loop-closing behaviour incidents already get.
+    /// </remarks>
+    public Guid? MaintenancePlanId { get; private set; }
 
     /// <summary>The technician currently responsible, once assigned.</summary>
     public Guid? AssignedToUserId { get; private set; }
@@ -141,7 +154,8 @@ public sealed class WorkOrder : AggregateRoot<Guid>, ITenantOwned, IAuditableEnt
         WorkOrderPriority priority,
         Guid? assetId,
         Guid? incidentId,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        Guid? maintenancePlanId = null)
     {
         if (string.IsNullOrWhiteSpace(title))
         {
@@ -176,10 +190,11 @@ public sealed class WorkOrder : AggregateRoot<Guid>, ITenantOwned, IAuditableEnt
             description?.Trim(),
             priority,
             assetId,
-            incidentId);
+            incidentId,
+            maintenancePlanId);
 
         workOrder.RaiseDomainEvent(new WorkOrderCreated(
-            id, organizationId, workOrder.Reference, priority, assetId, incidentId));
+            id, organizationId, workOrder.Reference, priority, assetId, incidentId, maintenancePlanId));
 
         return Result.Success(workOrder);
     }
@@ -282,7 +297,7 @@ public sealed class WorkOrder : AggregateRoot<Guid>, ITenantOwned, IAuditableEnt
         var elapsed = now - (StartedOnUtc ?? CreatedOnUtc);
 
         RaiseDomainEvent(new WorkOrderCompleted(
-            Id, OrganizationId, completedBy, AssetId, IncidentId, elapsed));
+            Id, OrganizationId, completedBy, AssetId, IncidentId, MaintenancePlanId, elapsed));
 
         return Result.Success();
     }

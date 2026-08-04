@@ -6,6 +6,7 @@ using Aegis.Domain.Assets;
 using Aegis.Domain.Auditing;
 using Aegis.Domain.Identity;
 using Aegis.Domain.Incidents;
+using Aegis.Domain.Maintenance;
 using Aegis.Domain.Organizations;
 using Aegis.Domain.WorkOrders;
 using Microsoft.EntityFrameworkCore;
@@ -52,6 +53,9 @@ public sealed class AegisDbContext : DbContext, IAegisDbContext
 
     /// <inheritdoc />
     public DbSet<WorkOrder> WorkOrders => Set<WorkOrder>();
+
+    /// <inheritdoc />
+    public DbSet<MaintenancePlan> MaintenancePlans => Set<MaintenancePlan>();
 
     /// <summary>
     /// The tenant applied by the global query filters.

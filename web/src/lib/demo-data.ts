@@ -8,6 +8,7 @@ import type {
   ClassificationMethod,
   IncidentListItem,
   IncidentStatus,
+  MaintenancePlanListItem,
   WorkOrderListItem,
   WorkOrderPriority,
   WorkOrderStatus,
@@ -429,6 +430,7 @@ function buildWorkOrders(count: number): WorkOrderListItem[] {
       priority,
       assetId: asset?.id ?? null,
       incidentId: incident?.id ?? null,
+      maintenancePlanId: null,
       assignedToUserId: isAssigned ? pick(DEMO_TECHNICIANS).id : null,
       scheduledFor,
       startedOnUtc,
@@ -444,6 +446,93 @@ function buildWorkOrders(count: number): WorkOrderListItem[] {
 }
 
 export const DEMO_WORK_ORDERS: WorkOrderListItem[] = buildWorkOrders(58);
+
+/* ------------------------------------------------------------------ *
+ * Maintenance plans
+ * ------------------------------------------------------------------ */
+
+const MAINTENANCE_PLAN_TITLES: Partial<Record<AssetType, string[]>> = {
+  Pump: ["Quarterly pump service", "Bearing and seal inspection"],
+  Valve: ["Isolation valve exercise", "Actuator lubrication"],
+  Hydrant: ["Hydrant flow test", "Cap and thread inspection"],
+  Pipe: ["Corrosion survey", "Pressure test"],
+  Tank: ["Tank inspection and clean", "Level sensor calibration"],
+  Drain: ["Gully clearance", "CCTV survey"],
+  Sensor: ["Calibration check", "Battery and signal check"],
+  Site: ["Site safety inspection", "Perimeter and access check"],
+  TreatmentPlant: ["Filtration media inspection", "Dosing system service"],
+  Transformer: ["Oil sample and thermal scan", "Insulation resistance test"],
+  Substation: ["Switchgear inspection", "Earthing continuity check"],
+  StreetLight: ["Lamp and photocell check", "Column structural inspection"],
+};
+
+const FREQUENCY_WEIGHTS: Record<string, number> = {
+  "30": 15,
+  "90": 35,
+  "180": 30,
+  "365": 20,
+};
+
+/**
+ * Plans are generated independently of the seeded work orders, the same way incidents and work
+ * orders only connect through runtime actions rather than a pre-wired static graph: a plan's
+ * history here is "never generated from," and generating one for real happens through the same
+ * `api.createWorkOrder`-adjacent call a live session would make.
+ */
+function buildMaintenancePlans(count: number): MaintenancePlanListItem[] {
+  const plans: MaintenancePlanListItem[] = [];
+  const eligibleAssets = DEMO_ASSETS.filter(
+    (a) => a.status !== "Decommissioned" && MAINTENANCE_PLAN_TITLES[a.type],
+  );
+
+  for (let index = 0; index < count && index < eligibleAssets.length; index++) {
+    const asset = eligibleAssets[index * 7 % eligibleAssets.length];
+    const titles = MAINTENANCE_PLAN_TITLES[asset.type] ?? ["Scheduled inspection"];
+    const frequencyDays = Number(weighted(FREQUENCY_WEIGHTS));
+
+    const isActive = random() > 0.12;
+
+    // Spread due dates from well overdue to well in the future, so the queue has something at
+    // every point on the scale rather than clustering suspiciously close to "now".
+    const dueOffsetDays = Math.floor(random() * frequencyDays * 1.4) - Math.floor(frequencyDays * 0.3);
+    const nextDueOnUtc = new Date(Date.now() + dueOffsetDays * 86_400_000).toISOString();
+
+    const everCompleted = random() > 0.35;
+    const lastCompletedOnUtc = everCompleted
+      ? new Date(new Date(nextDueOnUtc).getTime() - frequencyDays * 86_400_000).toISOString()
+      : null;
+
+    const createdOnUtc = lastCompletedOnUtc ?? daysAgo(Math.floor(random() * 400) + 60);
+
+    plans.push({
+      id: `demo-plan-${index.toString().padStart(4, "0")}`,
+      reference: buildMaintenancePlanReference(index, createdOnUtc),
+      assetId: asset.id,
+      title: pick(titles),
+      frequencyDays,
+      nextDueOnUtc,
+      lastCompletedOnUtc,
+      isActive,
+      isDue: isActive && new Date(nextDueOnUtc).getTime() <= Date.now(),
+      createdOnUtc,
+    });
+  }
+
+  // Soonest due first, matching the server's default sort.
+  return plans.sort((a, b) => new Date(a.nextDueOnUtc).getTime() - new Date(b.nextDueOnUtc).getTime());
+}
+
+function buildMaintenancePlanReference(index: number, createdOnUtc: string): string {
+  const year = new Date(createdOnUtc).getUTCFullYear();
+  const tail = Math.floor(random() * 0xffffffffffff)
+    .toString(16)
+    .padStart(12, "0")
+    .toUpperCase();
+
+  return `MP-${year}-${tail}${index}`.slice(0, 20);
+}
+
+export const DEMO_MAINTENANCE_PLANS: MaintenancePlanListItem[] = buildMaintenancePlans(64);
 
 export const DEMO_USER: AuthenticationResult = {
   accessToken: "demo",
@@ -469,6 +558,9 @@ export const DEMO_USER: AuthenticationResult = {
       "workorders.create",
       "workorders.assign",
       "workorders.complete",
+      "maintenance.view",
+      "maintenance.schedule",
+      "maintenance.configure",
       "analytics.operational.view",
       "analytics.executive.view",
     ],

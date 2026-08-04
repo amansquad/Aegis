@@ -1,4 +1,11 @@
-import { DEMO_ASSETS, DEMO_INCIDENTS, DEMO_TECHNICIANS, DEMO_USER, DEMO_WORK_ORDERS } from "./demo-data";
+import {
+  DEMO_ASSETS,
+  DEMO_INCIDENTS,
+  DEMO_MAINTENANCE_PLANS,
+  DEMO_TECHNICIANS,
+  DEMO_USER,
+  DEMO_WORK_ORDERS,
+} from "./demo-data";
 import { classifyReport, distanceInMetres } from "./incident-classifier";
 import type {
   Asset,
@@ -6,15 +13,19 @@ import type {
   AssignableUser,
   AssignWorkOrderInput,
   AuthenticationResult,
+  CreateMaintenancePlanInput,
   CreateWorkOrderInput,
   IncidentFilters,
   IncidentListItem,
+  MaintenancePlanFilters,
+  MaintenancePlanListItem,
   PagedResult,
   ReportIncidentInput,
   ReportIncidentResult,
   TriageIncidentInput,
   WorkOrderFilters,
   WorkOrderListItem,
+  WorkOrderPriority,
 } from "./types";
 
 /**
@@ -290,6 +301,72 @@ function buildDemoWorkOrderReference(createdOnUtc: string): string {
 }
 
 /**
+ * The in-session maintenance plan store, mutable for the same reason `demoWorkOrders` is:
+ * creation, generation and activation all happen from this UI during a session.
+ */
+let demoMaintenancePlans: MaintenancePlanListItem[] = [...DEMO_MAINTENANCE_PLANS];
+
+function demoMaintenancePlanList(filters: MaintenancePlanFilters): PagedResult<MaintenancePlanListItem> {
+  const term = filters.searchTerm?.trim().toLowerCase();
+
+  let rows = demoMaintenancePlans.filter((plan) => {
+    if (filters.assetId && plan.assetId !== filters.assetId) return false;
+    if (filters.activeOnly && !plan.isActive) return false;
+    if (filters.dueOnly && !plan.isDue) return false;
+
+    if (term) {
+      const haystack = `${plan.title} ${plan.reference}`.toLowerCase();
+      if (!haystack.includes(term)) return false;
+    }
+
+    return true;
+  });
+
+  const sortBy = filters.sortBy ?? "nextDueOnUtc";
+  const descending = (filters.sortDirection ?? "Ascending") === "Descending";
+
+  rows = [...rows].sort((a, b) => {
+    const left = a[sortBy as keyof MaintenancePlanListItem];
+    const right = b[sortBy as keyof MaintenancePlanListItem];
+
+    if (left === null) return 1;
+    if (right === null) return -1;
+
+    const comparison =
+      typeof left === "number" && typeof right === "number"
+        ? left - right
+        : String(left).localeCompare(String(right));
+
+    return descending ? -comparison : comparison;
+  });
+
+  const pageSize = Math.min(filters.pageSize ?? 25, MAX_PAGE_SIZE);
+  const page = Math.max(filters.page ?? 1, 1);
+  const start = (page - 1) * pageSize;
+  const items = rows.slice(start, start + pageSize);
+  const totalPages = Math.ceil(rows.length / pageSize);
+
+  return {
+    items,
+    page,
+    pageSize,
+    totalCount: rows.length,
+    totalPages,
+    hasPreviousPage: page > 1,
+    hasNextPage: page < totalPages,
+  };
+}
+
+function buildDemoMaintenancePlanReference(createdOnUtc: string): string {
+  const year = new Date(createdOnUtc).getUTCFullYear();
+  const tail = Array.from({ length: 12 }, () =>
+    "0123456789ABCDEF"[Math.floor(Math.random() * 16)],
+  ).join("");
+
+  return `MP-${year}-${tail}`;
+}
+
+/**
  * Resolves the asset a report concerns from our own data, exactly as the server does: a quoted
  * code is tried first and is only ever a lookup, then position within 150m. Nothing the
  * classifier returned is trusted as an identity — a code that does not exist in this estate
@@ -367,7 +444,9 @@ function buildDemoReference(reportedOnUtc: string): string {
  * Public surface
  * ------------------------------------------------------------------ */
 
-function toQueryString(filters: AssetFilters | IncidentFilters | WorkOrderFilters): string {
+function toQueryString(
+  filters: AssetFilters | IncidentFilters | WorkOrderFilters | MaintenancePlanFilters,
+): string {
   const params = new URLSearchParams();
 
   for (const [key, value] of Object.entries(filters)) {
@@ -595,6 +674,7 @@ export const api = {
         priority: input.priority,
         assetId: input.assetId ?? null,
         incidentId: input.incidentId ?? null,
+        maintenancePlanId: null,
         assignedToUserId: null,
         scheduledFor: null,
         startedOnUtc: null,
@@ -670,9 +750,10 @@ export const api = {
   },
 
   /**
-   * Completing a work order that traces back to an incident resolves that incident too, mirroring
-   * the server's loop-closing behaviour exactly — the demo would otherwise misrepresent the one
-   * property of this feature most worth showing.
+   * Completing a work order that traces back to an incident resolves that incident too, and one
+   * that traces back to a maintenance plan advances that plan's schedule too — mirroring the
+   * server's loop-closing behaviour exactly in both directions, since a demo that only closed one
+   * of the two loops would misrepresent which of this feature's properties actually hold.
    */
   async completeWorkOrder(workOrderId: string, notes: string | null, token?: string): Promise<void> {
     if (IS_DEMO) {
@@ -691,6 +772,18 @@ export const api = {
             ? { ...incident, status: "Resolved", resolvedOnUtc: now }
             : incident,
         );
+      }
+
+      if (workOrder?.maintenancePlanId) {
+        demoMaintenancePlans = demoMaintenancePlans.map((plan) => {
+          if (plan.id !== workOrder.maintenancePlanId) return plan;
+
+          const nextDueOnUtc = new Date(
+            new Date(now).getTime() + plan.frequencyDays * 86_400_000,
+          ).toISOString();
+
+          return { ...plan, lastCompletedOnUtc: now, nextDueOnUtc, isDue: false };
+        });
       }
 
       return;
@@ -717,5 +810,161 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ reason }),
     }, token);
+  },
+
+  async listMaintenancePlans(
+    filters: MaintenancePlanFilters,
+    token?: string,
+  ): Promise<PagedResult<MaintenancePlanListItem>> {
+    if (IS_DEMO) {
+      await new Promise((resolve) => setTimeout(resolve, 180));
+      return demoMaintenancePlanList(filters);
+    }
+
+    return request<PagedResult<MaintenancePlanListItem>>(
+      `/api/v1/maintenance-plans?${toQueryString(filters)}`,
+      { method: "GET" },
+      token,
+    );
+  },
+
+  async createMaintenancePlan(input: CreateMaintenancePlanInput, token?: string): Promise<string> {
+    if (IS_DEMO) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      if (!input.title.trim()) {
+        throw new ApiError("A title is required.", 400);
+      }
+
+      if (input.frequencyDays < 1 || input.frequencyDays > 3650) {
+        throw new ApiError("The frequency must be between 1 and 3650 days.", 400);
+      }
+
+      const now = new Date().toISOString();
+      const nextDueOnUtc = input.startingOn ?? now;
+
+      const plan: MaintenancePlanListItem = {
+        id: `demo-plan-${crypto.randomUUID()}`,
+        reference: buildDemoMaintenancePlanReference(now),
+        assetId: input.assetId,
+        title: input.title.trim(),
+        frequencyDays: input.frequencyDays,
+        nextDueOnUtc,
+        lastCompletedOnUtc: null,
+        isActive: true,
+        isDue: new Date(nextDueOnUtc).getTime() <= Date.now(),
+        createdOnUtc: now,
+      };
+
+      demoMaintenancePlans = [plan, ...demoMaintenancePlans];
+
+      return plan.id;
+    }
+
+    return request<string>("/api/v1/maintenance-plans", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }, token);
+  },
+
+  async generateWorkOrderFromPlan(
+    maintenancePlanId: string,
+    priority: WorkOrderPriority,
+    token?: string,
+  ): Promise<string> {
+    if (IS_DEMO) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const plan = demoMaintenancePlans.find((p) => p.id === maintenancePlanId);
+
+      if (!plan) {
+        throw new ApiError("The maintenance plan was not found.", 404, "MaintenancePlan.NotFound");
+      }
+
+      if (!plan.isActive) {
+        throw new ApiError(
+          "An inactive plan cannot generate work.",
+          409,
+          "MaintenancePlan.NotActive",
+        );
+      }
+
+      const alreadyOpen = demoWorkOrders.some(
+        (w) => w.maintenancePlanId === plan.id && OPEN_WORK_ORDER_STATUSES.has(w.status),
+      );
+
+      if (alreadyOpen) {
+        throw new ApiError(
+          "This plan already has an open work order.",
+          409,
+          "MaintenancePlan.WorkOrderAlreadyOpen",
+        );
+      }
+
+      const now = new Date().toISOString();
+
+      const workOrder: WorkOrderListItem = {
+        id: `demo-workorder-${crypto.randomUUID()}`,
+        reference: buildDemoWorkOrderReference(now),
+        title: plan.title,
+        status: "Draft",
+        priority,
+        assetId: plan.assetId,
+        incidentId: null,
+        maintenancePlanId: plan.id,
+        assignedToUserId: null,
+        scheduledFor: null,
+        startedOnUtc: null,
+        completedOnUtc: null,
+        createdOnUtc: now,
+      };
+
+      demoWorkOrders = [workOrder, ...demoWorkOrders];
+
+      return workOrder.id;
+    }
+
+    return request<string>(`/api/v1/maintenance-plans/${maintenancePlanId}/generate-work-order`, {
+      method: "POST",
+      body: JSON.stringify({ priority }),
+    }, token);
+  },
+
+  async deactivateMaintenancePlan(maintenancePlanId: string, token?: string): Promise<void> {
+    if (IS_DEMO) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      demoMaintenancePlans = demoMaintenancePlans.map((plan) =>
+        plan.id === maintenancePlanId ? { ...plan, isActive: false, isDue: false } : plan,
+      );
+
+      return;
+    }
+
+    await request<void>(
+      `/api/v1/maintenance-plans/${maintenancePlanId}/deactivate`,
+      { method: "POST" },
+      token,
+    );
+  },
+
+  async reactivateMaintenancePlan(maintenancePlanId: string, token?: string): Promise<void> {
+    if (IS_DEMO) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      demoMaintenancePlans = demoMaintenancePlans.map((plan) =>
+        plan.id === maintenancePlanId
+          ? { ...plan, isActive: true, isDue: new Date(plan.nextDueOnUtc).getTime() <= Date.now() }
+          : plan,
+      );
+
+      return;
+    }
+
+    await request<void>(
+      `/api/v1/maintenance-plans/${maintenancePlanId}/reactivate`,
+      { method: "POST" },
+      token,
+    );
   },
 };

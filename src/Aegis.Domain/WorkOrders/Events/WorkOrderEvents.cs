@@ -9,7 +9,8 @@ public sealed record WorkOrderCreated(
     string Reference,
     WorkOrderPriority Priority,
     Guid? AssetId,
-    Guid? IncidentId) : DomainEvent;
+    Guid? IncidentId,
+    Guid? MaintenancePlanId) : DomainEvent;
 
 /// <summary>Raised when a technician is assigned.</summary>
 /// <remarks>
@@ -37,6 +38,7 @@ public sealed record WorkOrderCompleted(
     Guid CompletedBy,
     Guid? AssetId,
     Guid? IncidentId,
+    Guid? MaintenancePlanId,
     TimeSpan TimeToComplete) : DomainEvent;
 
 /// <summary>Raised when a work order is withdrawn without being completed.</summary>

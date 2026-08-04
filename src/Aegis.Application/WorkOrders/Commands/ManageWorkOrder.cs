@@ -3,6 +3,7 @@ using Aegis.Application.Abstractions.Security;
 using Aegis.Application.Messaging;
 using Aegis.Domain.Common;
 using Aegis.Domain.Incidents;
+using Aegis.Domain.Maintenance;
 using Aegis.Domain.WorkOrders;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
@@ -116,15 +117,19 @@ public sealed class CompleteWorkOrderCommandValidator : AbstractValidator<Comple
 /// <summary>Handles <see cref="CompleteWorkOrderCommand"/>.</summary>
 /// <remarks>
 /// <para>
-/// <b>This is where the loop closes.</b> When the work order traces back to a reported incident,
-/// completing it also resolves that incident, in the same transaction. A dispatcher fixing a
-/// burst main should not have to remember a second step to tell the person who reported it that
-/// it is done — and if they did forget, the incident would sit open indefinitely with the work
-/// that answers it already finished.
+/// <b>This is where the loop closes — twice over.</b> When the work order traces back to a
+/// reported incident, completing it also resolves that incident, in the same transaction. When it
+/// traces back to a maintenance plan instead, completing it advances that plan's next due date.
+/// A dispatcher fixing a burst main, or a technician finishing a scheduled inspection, should not
+/// have to remember a second step to tell the thing that asked for the work that it is done.
 /// </para>
 /// <para>
-/// The reverse is not implied: resolving an incident directly, with no work order attached, stays
-/// entirely valid for problems that never needed a dispatch.
+/// A work order can trace back to at most one of the two — a plan-generated work order has no
+/// incident, and vice versa — so both branches below are independent, not competing.
+/// </para>
+/// <para>
+/// Neither closure is implied in reverse: resolving an incident directly, or advancing a plan with
+/// no completed work order, stays entirely valid for cases that never needed a dispatch.
 /// </para>
 /// </remarks>
 internal sealed class CompleteWorkOrderCommandHandler(
@@ -168,6 +173,14 @@ internal sealed class CompleteWorkOrderCommandHandler(
                     completedBy,
                     now);
             }
+        }
+
+        if (workOrder.MaintenancePlanId is { } maintenancePlanId)
+        {
+            var plan = await context.Set<MaintenancePlan>()
+                .SingleOrDefaultAsync(p => p.Id == maintenancePlanId, cancellationToken);
+
+            plan?.Advance(now);
         }
 
         await context.SaveChangesAsync(cancellationToken);

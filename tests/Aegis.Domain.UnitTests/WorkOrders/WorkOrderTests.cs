@@ -218,6 +218,25 @@ public sealed class WorkOrderTests
     }
 
     [Fact]
+    public void A_work_order_generated_from_a_plan_carries_the_link_through_to_completion()
+    {
+        var planId = Guid.CreateVersion7();
+
+        var workOrder = WorkOrder.Create(
+            Organization, "Quarterly inspection", null, WorkOrderPriority.Low,
+            AssetId, incidentId: null, Now, maintenancePlanId: planId).Value;
+
+        workOrder.MaintenancePlanId.ShouldBe(planId);
+
+        workOrder.Assign(Technician);
+        workOrder.ClearDomainEvents();
+        workOrder.Complete(null, Dispatcher, Now);
+
+        workOrder.DomainEvents.OfType<WorkOrderCompleted>()
+            .ShouldHaveSingleItem().MaintenancePlanId.ShouldBe(planId);
+    }
+
+    [Fact]
     public void A_completed_work_order_cannot_be_completed_again()
     {
         var workOrder = CreateAssigned();

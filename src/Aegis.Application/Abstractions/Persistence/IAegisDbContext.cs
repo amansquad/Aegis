@@ -2,6 +2,7 @@ using Aegis.Domain.Assets;
 using Aegis.Domain.Auditing;
 using Aegis.Domain.Identity;
 using Aegis.Domain.Incidents;
+using Aegis.Domain.Maintenance;
 using Aegis.Domain.Organizations;
 using Aegis.Domain.WorkOrders;
 using Microsoft.EntityFrameworkCore;
@@ -68,6 +69,9 @@ public interface IAegisDbContext
 
     /// <summary>Dispatched work belonging to the current organization.</summary>
     DbSet<WorkOrder> WorkOrders { get; }
+
+    /// <summary>Recurring service schedules belonging to the current organization.</summary>
+    DbSet<MaintenancePlan> MaintenancePlans { get; }
 
     /// <summary>
     /// Escape hatch for raw SQL, transactions and provider-specific operations.

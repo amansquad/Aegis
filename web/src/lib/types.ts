@@ -276,6 +276,7 @@ export interface WorkOrderListItem {
   priority: WorkOrderPriority;
   assetId: string | null;
   incidentId: string | null;
+  maintenancePlanId: string | null;
   assignedToUserId: string | null;
   scheduledFor: string | null;
   startedOnUtc: string | null;
@@ -288,6 +289,7 @@ export interface WorkOrderFilters {
   priority?: WorkOrderPriority;
   assetId?: string;
   incidentId?: string;
+  maintenancePlanId?: string;
   assignedToUserId?: string;
   openOnly?: boolean;
   unassignedOnly?: boolean;
@@ -337,4 +339,40 @@ export interface AssignableUser {
   id: string;
   displayName: string;
   roles: string[];
+}
+
+/* ------------------------------------------------------------------ *
+ * Maintenance plans
+ * ------------------------------------------------------------------ */
+
+export interface MaintenancePlanListItem {
+  id: string;
+  reference: string;
+  assetId: string;
+  title: string;
+  frequencyDays: number;
+  nextDueOnUtc: string;
+  lastCompletedOnUtc: string | null;
+  isActive: boolean;
+  isDue: boolean;
+  createdOnUtc: string;
+}
+
+export interface MaintenancePlanFilters {
+  assetId?: string;
+  activeOnly?: boolean;
+  dueOnly?: boolean;
+  searchTerm?: string;
+  page?: number;
+  pageSize?: number;
+  sortBy?: string;
+  sortDirection?: "Ascending" | "Descending";
+}
+
+export interface CreateMaintenancePlanInput {
+  assetId: string;
+  title: string;
+  description?: string | null;
+  frequencyDays: number;
+  startingOn?: string | null;
 }

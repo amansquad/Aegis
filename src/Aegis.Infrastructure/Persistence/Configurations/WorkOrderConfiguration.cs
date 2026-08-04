@@ -55,5 +55,12 @@ internal sealed class WorkOrderConfiguration : IEntityTypeConfiguration<WorkOrde
             .HasIndex(w => w.IncidentId)
             .HasDatabaseName("IX_WorkOrders_IncidentId")
             .HasFilter("[IncidentId] IS NOT NULL");
+
+        // Serves the plan-to-work-order link used to close the loop on completion, and the
+        // double-dispatch guard that checks for an already-open work order before generating.
+        builder
+            .HasIndex(w => new { w.MaintenancePlanId, w.Status })
+            .HasDatabaseName("IX_WorkOrders_MaintenancePlanId_Status")
+            .HasFilter("[MaintenancePlanId] IS NOT NULL");
     }
 }
