@@ -141,8 +141,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           ref={navRef}
           tabIndex={-1}
           className={cn(
-            "fixed inset-y-14 left-0 z-20 w-60 shrink-0 border-r border-line bg-surface p-3",
-            "transition-transform duration-200 lg:static lg:inset-auto lg:translate-x-0 lg:outline-none",
+            "fixed inset-y-14 left-0 z-20 w-60 shrink-0 border-r border-line bg-surface p-3 focus:outline-none",
+            "transition-transform duration-200 lg:static lg:inset-auto lg:translate-x-0",
             navOpen ? "translate-x-0" : "-translate-x-full",
           )}
           aria-label="Sections"

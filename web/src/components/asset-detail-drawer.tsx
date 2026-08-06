@@ -27,7 +27,11 @@ export function AssetDetailDrawer({ asset, onClose }: { asset: Asset; onClose: (
   const token = useSession((state) => state.token);
   const dialogRef = useDialogA11y<HTMLElement>(onClose);
 
-  const { data: incidents, isPending: incidentsPending } = useQuery({
+  const {
+    data: incidents,
+    isPending: incidentsPending,
+    isError: incidentsErrored,
+  } = useQuery({
     queryKey: ["asset-detail", asset.id, "incidents"],
     queryFn: () =>
       api.listIncidents(
@@ -36,7 +40,11 @@ export function AssetDetailDrawer({ asset, onClose }: { asset: Asset; onClose: (
       ),
   });
 
-  const { data: workOrders, isPending: workOrdersPending } = useQuery({
+  const {
+    data: workOrders,
+    isPending: workOrdersPending,
+    isError: workOrdersErrored,
+  } = useQuery({
     queryKey: ["asset-detail", asset.id, "work-orders"],
     queryFn: () =>
       api.listWorkOrders(
@@ -45,7 +53,11 @@ export function AssetDetailDrawer({ asset, onClose }: { asset: Asset; onClose: (
       ),
   });
 
-  const { data: maintenancePlans, isPending: maintenancePending } = useQuery({
+  const {
+    data: maintenancePlans,
+    isPending: maintenancePending,
+    isError: maintenanceErrored,
+  } = useQuery({
     queryKey: ["asset-detail", asset.id, "maintenance"],
     queryFn: () => api.listMaintenancePlans({ assetId: asset.id, pageSize: 5 }, token ?? undefined),
   });
@@ -123,6 +135,7 @@ export function AssetDetailDrawer({ asset, onClose }: { asset: Asset; onClose: (
           <LinkedSection
             title="Incidents"
             pending={incidentsPending}
+            errored={incidentsErrored}
             emptyText="No incidents reference this asset."
           >
             {incidents?.items.map((incident) => (
@@ -142,6 +155,7 @@ export function AssetDetailDrawer({ asset, onClose }: { asset: Asset; onClose: (
           <LinkedSection
             title="Work orders"
             pending={workOrdersPending}
+            errored={workOrdersErrored}
             emptyText="No work orders reference this asset."
           >
             {workOrders?.items.map((workOrder) => (
@@ -161,6 +175,7 @@ export function AssetDetailDrawer({ asset, onClose }: { asset: Asset; onClose: (
           <LinkedSection
             title="Maintenance plans"
             pending={maintenancePending}
+            errored={maintenanceErrored}
             emptyText="No maintenance plans cover this asset."
           >
             {maintenancePlans?.items.map((plan) => (
@@ -184,11 +199,13 @@ export function AssetDetailDrawer({ asset, onClose }: { asset: Asset; onClose: (
 function LinkedSection({
   title,
   pending,
+  errored,
   emptyText,
   children,
 }: {
   title: string;
   pending: boolean;
+  errored: boolean;
   emptyText: string;
   children: React.ReactNode;
 }) {
@@ -199,6 +216,8 @@ function LinkedSection({
       <p className="text-[11px] font-medium uppercase tracking-wider text-ink-faint">{title}</p>
       {pending ? (
         <p className="mt-2 text-[12px] text-ink-faint">Loading…</p>
+      ) : errored ? (
+        <p className="mt-2 text-[12px] text-failed">Could not load. Try reopening this asset.</p>
       ) : hasChildren ? (
         <ul className="mt-2 divide-y divide-line rounded-[--radius-control] border border-line">
           {children}
