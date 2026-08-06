@@ -22,7 +22,7 @@ export default function LoginPage() {
 
     try {
       const result = await api.signIn(email, password);
-      signIn(result.accessToken, result.user);
+      signIn(result.accessToken, result.user, result.accessTokenExpiresOnUtc);
       router.replace("/dashboard");
     } catch (cause) {
       setError(

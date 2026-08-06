@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Activity, AlertTriangle, ClipboardList, Wrench } from "lucide-react";
-import { useSession } from "@/lib/store";
+import { useIsSignedIn } from "@/lib/store";
 import { Button } from "@/components/ui";
 import { InstallAppButton } from "@/components/install-app-button";
 
@@ -35,9 +35,9 @@ const MODULES = [
  * question ("what is this?") that the previous behaviour never let anyone ask.
  */
 export default function HomePage() {
-  const user = useSession((state) => state.user);
-  const primaryHref = user ? "/dashboard" : "/login";
-  const primaryLabel = user ? "Open dashboard" : "Sign in";
+  const signedIn = useIsSignedIn();
+  const primaryHref = signedIn ? "/dashboard" : "/login";
+  const primaryLabel = signedIn ? "Open dashboard" : "Sign in";
 
   return (
     <main className="flex min-h-dvh flex-col bg-void">

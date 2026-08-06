@@ -53,20 +53,26 @@ function ThemeToggle() {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, signOut } = useSession();
+  const { user, signOut, isExpired } = useSession();
+  const expired = isExpired();
   const [navOpen, setNavOpen] = useState(false);
 
   // Guard rather than middleware: the session lives in the browser, so the server has nothing to
-  // check. The real enforcement is the API rejecting a request with no bearer token.
+  // check. The real enforcement is the API rejecting a request with no bearer token. Expiry is
+  // checked here too, not just presence — persisted state with no expiry check would leave a
+  // visitor "signed in" in this tab indefinitely, long after the token itself has died.
   useEffect(() => {
-    if (!user) router.replace("/login");
-  }, [user, router]);
+    if (!user || expired) {
+      if (expired) signOut();
+      router.replace("/login");
+    }
+  }, [user, expired, signOut, router]);
 
   useEffect(() => {
     setNavOpen(false);
   }, [pathname]);
 
-  if (!user) return null;
+  if (!user || expired) return null;
 
   return (
     <div className="flex min-h-dvh flex-col bg-void">

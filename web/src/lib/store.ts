@@ -16,9 +16,17 @@ import type { AuthenticatedUser } from "./types";
 interface SessionState {
   token: string | null;
   user: AuthenticatedUser | null;
-  signIn: (token: string, user: AuthenticatedUser) => void;
+  accessTokenExpiresOnUtc: string | null;
+  signIn: (token: string, user: AuthenticatedUser, accessTokenExpiresOnUtc: string) => void;
   signOut: () => void;
   hasPermission: (permission: string) => boolean;
+  /**
+   * True once `token`/`user` are set but the access token's own expiry has passed. Persisted
+   * state with no expiry check would stay "signed in" in this tab forever — the API already
+   * tells the client when the token dies, so a session that outlives it is a bug in the client,
+   * not a feature.
+   */
+  isExpired: () => boolean;
 }
 
 export const useSession = create<SessionState>()(
@@ -26,17 +34,40 @@ export const useSession = create<SessionState>()(
     (set, get) => ({
       token: null,
       user: null,
-      signIn: (token, user) => set({ token, user }),
-      signOut: () => set({ token: null, user: null }),
+      accessTokenExpiresOnUtc: null,
+      signIn: (token, user, accessTokenExpiresOnUtc) => set({ token, user, accessTokenExpiresOnUtc }),
+      signOut: () => set({ token: null, user: null, accessTokenExpiresOnUtc: null }),
 
       // Client-side permission checks hide controls the user cannot use. They are a courtesy and
       // never enforcement — the server re-checks every permission on every request, because
       // anything the browser decides is a decision an attacker also controls.
       hasPermission: (permission) => get().user?.permissions.includes(permission) ?? false,
+
+      isExpired: () => {
+        const { user, accessTokenExpiresOnUtc } = get();
+
+        if (!user) return false; // No session to expire; the caller treats this as signed out either way.
+
+        // Missing or unparseable is treated as expired, not as "not expired" — a signed-in user
+        // with no valid expiry on record is exactly the state a session persisted before this
+        // field existed would be in, and failing open there is the wrong direction for a fail
+        // safe to point.
+        const expiresAt = accessTokenExpiresOnUtc ? new Date(accessTokenExpiresOnUtc).getTime() : NaN;
+        return Number.isNaN(expiresAt) || Date.now() >= expiresAt;
+      },
     }),
     { name: "aegis.session" },
   ),
 );
+
+/**
+ * The one thing every screen should actually ask instead of reading `user` directly: whether
+ * there is a session AND it has not expired. A truthy `user` from a token that died three days
+ * ago is not a signed-in visitor — it is stale localStorage the app forgot to check.
+ */
+export function useIsSignedIn(): boolean {
+  return useSession((state) => state.user !== null && !state.isExpired());
+}
 
 export type Theme = "dark" | "light";
 
