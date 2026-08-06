@@ -18,6 +18,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useSession, useTheme, type Theme } from "@/lib/store";
 import { IS_DEMO } from "@/lib/api";
+import { useDialogA11y } from "@/lib/use-dialog-a11y";
 
 const NAV = [
   { href: "/dashboard", label: "Operations", icon: LayoutDashboard },
@@ -56,6 +57,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { user, signOut, isExpired } = useSession();
   const expired = isExpired();
   const [navOpen, setNavOpen] = useState(false);
+  const navRef = useDialogA11y<HTMLElement>(() => setNavOpen(false), navOpen);
 
   // Guard rather than middleware: the session lives in the browser, so the server has nothing to
   // check. The real enforcement is the API rejecting a request with no bearer token. Expiry is
@@ -136,9 +138,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <div className="flex flex-1">
         <nav
+          ref={navRef}
+          tabIndex={-1}
           className={cn(
             "fixed inset-y-14 left-0 z-20 w-60 shrink-0 border-r border-line bg-surface p-3",
-            "transition-transform duration-200 lg:static lg:inset-auto lg:translate-x-0",
+            "transition-transform duration-200 lg:static lg:inset-auto lg:translate-x-0 lg:outline-none",
             navOpen ? "translate-x-0" : "-translate-x-full",
           )}
           aria-label="Sections"
