@@ -160,7 +160,7 @@ export function IncidentDetailDrawer({
           <button
             onClick={onClose}
             aria-label="Close"
-            className="rounded-[--radius-control] p-1.5 text-ink-muted hover:bg-raised hover:text-ink"
+            className="rounded-[--radius-control] p-2 text-ink-muted hover:bg-raised hover:text-ink"
           >
             <X size={16} aria-hidden />
           </button>

@@ -42,7 +42,7 @@ function ThemeToggle() {
   return (
     <button
       onClick={toggle}
-      className="rounded-[--radius-control] p-2 text-ink-muted transition-colors hover:bg-raised hover:text-ink"
+      className="rounded-[--radius-control] p-2.5 text-ink-muted transition-colors hover:bg-raised hover:text-ink"
       aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
     >
       {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
@@ -79,7 +79,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b border-line bg-surface/90 px-4 backdrop-blur-md">
         <button
           onClick={() => setNavOpen((open) => !open)}
-          className="rounded-[--radius-control] p-2 text-ink-muted hover:bg-raised hover:text-ink lg:hidden"
+          className="rounded-[--radius-control] p-2.5 text-ink-muted hover:bg-raised hover:text-ink lg:hidden"
           aria-label={navOpen ? "Close navigation" : "Open navigation"}
           aria-expanded={navOpen}
         >
@@ -118,14 +118,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </span>
         )}
 
-        <div className={cn("flex items-center gap-1", !IS_DEMO && "ml-auto")}>
+        <div className={cn("flex items-center gap-2", !IS_DEMO && "ml-auto")}>
           <ThemeToggle />
           <button
             onClick={() => {
               signOut();
               router.replace("/login");
             }}
-            className="rounded-[--radius-control] p-2 text-ink-muted transition-colors hover:bg-raised hover:text-ink"
+            className="rounded-[--radius-control] p-2.5 text-ink-muted transition-colors hover:bg-raised hover:text-ink"
             aria-label="Sign out"
             title={`Sign out — ${user.email}`}
           >
