@@ -10,6 +10,7 @@ import {
   CONDITION_LABEL,
   STATUS_LABEL,
   TYPE_LABEL,
+  type Asset,
   type AssetCondition,
   type AssetFilters,
   type AssetStatus,
@@ -27,6 +28,7 @@ import {
   Select,
   StatusPill,
 } from "@/components/ui";
+import { AssetDetailDrawer } from "@/components/asset-detail-drawer";
 
 // Leaflet touches `window` at module scope, so it cannot be server-rendered. The placeholder is
 // sized to the map so switching views does not collapse the layout for a frame.
@@ -50,6 +52,7 @@ export default function AssetsPage() {
   const [status, setStatus] = useState<AssetStatus | "">("");
   const [condition, setCondition] = useState<AssetCondition | "">("");
   const [page, setPage] = useState(1);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const filters: AssetFilters = useMemo(
     () => ({
@@ -77,6 +80,7 @@ export default function AssetsPage() {
 
   const items = data?.items ?? [];
   const filtered = Boolean(search || type || status || condition);
+  const selected = items.find((asset) => asset.id === selectedId) ?? null;
 
   function reset() {
     setSearch("");
@@ -187,7 +191,7 @@ export default function AssetsPage() {
               Loading map…
             </div>
           ) : (
-            <AssetMap assets={items} />
+            <AssetMap assets={items} onSelect={(asset) => setSelectedId(asset.id)} />
           )}
         </Panel>
       ) : (
@@ -221,32 +225,7 @@ export default function AssetsPage() {
                   </thead>
                   <tbody className="divide-y divide-line">
                     {items.map((asset) => (
-                      <tr key={asset.id} className="transition-colors hover:bg-raised">
-                        <td className="tabular whitespace-nowrap px-4 py-3 text-[12px] text-ink-muted">
-                          {asset.code}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="block text-[13px] text-ink">{asset.name}</span>
-                          <span className="tabular block text-[11px] text-ink-faint">
-                            {formatCoordinate(asset.latitude, asset.longitude)}
-                          </span>
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-[13px] text-ink-muted">
-                          {TYPE_LABEL[asset.type]}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3">
-                          <StatusPill status={asset.status} />
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3">
-                          <ConditionBadge condition={asset.condition} />
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3">
-                          <CriticalityMeter level={asset.criticality} />
-                        </td>
-                        <td className="tabular whitespace-nowrap px-4 py-3 text-right text-[12px] text-ink-faint">
-                          {relativeAge(asset.lastInspectedOnUtc)}
-                        </td>
-                      </tr>
+                      <AssetRow key={asset.id} asset={asset} onOpen={() => setSelectedId(asset.id)} />
                     ))}
                   </tbody>
                 </table>
@@ -280,7 +259,40 @@ export default function AssetsPage() {
           )}
         </Panel>
       )}
+
+      {selected && <AssetDetailDrawer asset={selected} onClose={() => setSelectedId(null)} />}
     </div>
+  );
+}
+
+function AssetRow({ asset, onOpen }: { asset: Asset; onOpen: () => void }) {
+  return (
+    <tr onClick={onOpen} className="cursor-pointer transition-colors hover:bg-raised">
+      <td className="tabular whitespace-nowrap px-4 py-3 text-[12px] text-ink-muted">
+        {asset.code}
+      </td>
+      <td className="px-4 py-3">
+        <span className="block text-[13px] text-ink">{asset.name}</span>
+        <span className="tabular block text-[11px] text-ink-faint">
+          {formatCoordinate(asset.latitude, asset.longitude)}
+        </span>
+      </td>
+      <td className="whitespace-nowrap px-4 py-3 text-[13px] text-ink-muted">
+        {TYPE_LABEL[asset.type]}
+      </td>
+      <td className="whitespace-nowrap px-4 py-3">
+        <StatusPill status={asset.status} />
+      </td>
+      <td className="whitespace-nowrap px-4 py-3">
+        <ConditionBadge condition={asset.condition} />
+      </td>
+      <td className="whitespace-nowrap px-4 py-3">
+        <CriticalityMeter level={asset.criticality} />
+      </td>
+      <td className="tabular whitespace-nowrap px-4 py-3 text-right text-[12px] text-ink-faint">
+        {relativeAge(asset.lastInspectedOnUtc)}
+      </td>
+    </tr>
   );
 }
 
