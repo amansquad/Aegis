@@ -4,6 +4,7 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { useSession } from "@/lib/store";
+import { useDialogA11y } from "@/lib/use-dialog-a11y";
 import {
   CATEGORY_LABEL,
   SEVERITY_LABEL,
@@ -71,6 +72,7 @@ export function IncidentDetailDrawer({
   const [busy, setBusy] = useState<"triage" | "resolve" | "dispatch" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const dialogRef = useDialogA11y<HTMLElement>(onClose);
   const isOpen = OPEN_STATUSES.has(incident.status);
 
   async function handleTriage() {
@@ -141,9 +143,12 @@ export function IncidentDetailDrawer({
       />
 
       <aside
+        ref={dialogRef}
         role="dialog"
+        aria-modal="true"
         aria-label={`Incident ${incident.reference}`}
-        className="relative flex h-full w-full max-w-md flex-col overflow-y-auto border-l border-line bg-surface shadow-[--shadow-pop]"
+        tabIndex={-1}
+        className="relative flex h-full w-full max-w-md flex-col overflow-y-auto border-l border-line bg-surface shadow-[--shadow-pop] focus:outline-none"
       >
         <header className="flex items-start justify-between gap-3 border-b border-line px-5 py-4">
           <div>

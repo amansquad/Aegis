@@ -5,6 +5,7 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { useSession } from "@/lib/store";
+import { useDialogA11y } from "@/lib/use-dialog-a11y";
 import type { WorkOrderListItem } from "@/lib/types";
 import { relativeAge } from "@/lib/utils";
 import { Button, Field, Select } from "@/components/ui";
@@ -35,6 +36,7 @@ export function WorkOrderDetailDrawer({
   const [busy, setBusy] = useState<"assign" | "start" | "complete" | "cancel" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const dialogRef = useDialogA11y<HTMLElement>(onClose);
   const isOpen = OPEN_STATUSES.has(workOrder.status);
   const canAssign = hasPermission("workorders.assign");
   const canComplete = hasPermission("workorders.complete");
@@ -97,9 +99,12 @@ export function WorkOrderDetailDrawer({
       />
 
       <aside
+        ref={dialogRef}
         role="dialog"
+        aria-modal="true"
         aria-label={`Work order ${workOrder.reference}`}
-        className="relative flex h-full w-full max-w-md flex-col overflow-y-auto border-l border-line bg-surface shadow-[--shadow-pop]"
+        tabIndex={-1}
+        className="relative flex h-full w-full max-w-md flex-col overflow-y-auto border-l border-line bg-surface shadow-[--shadow-pop] focus:outline-none"
       >
         <header className="flex items-start justify-between gap-3 border-b border-line px-5 py-4">
           <div>

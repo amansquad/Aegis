@@ -15,6 +15,7 @@ import type {
 import { WORK_ORDER_PRIORITY_LABEL } from "@/lib/types";
 import { Button, EmptyState, ErrorState, Field, Input, Panel, RowSkeleton, Select } from "@/components/ui";
 import { DueBadge } from "@/components/maintenance-ui";
+import { useDialogA11y } from "@/lib/use-dialog-a11y";
 
 const PAGE_SIZE = 25;
 
@@ -309,6 +310,8 @@ function GenerateWorkOrderModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const dialogRef = useDialogA11y<HTMLDivElement>(onClose);
+
   async function handleGenerate() {
     setError(null);
     setBusy(true);
@@ -333,9 +336,12 @@ function GenerateWorkOrderModal({
       />
 
       <div
+        ref={dialogRef}
         role="dialog"
+        aria-modal="true"
         aria-label="Generate work order"
-        className="relative flex w-full max-w-md flex-col gap-4 rounded-[--radius-panel] border border-line bg-surface p-5 shadow-[--shadow-pop]"
+        tabIndex={-1}
+        className="relative flex w-full max-w-md flex-col gap-4 rounded-[--radius-panel] border border-line bg-surface p-5 shadow-[--shadow-pop] focus:outline-none"
       >
         <div className="flex items-start justify-between gap-3">
           <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-ink">
@@ -396,6 +402,8 @@ function CreatePlanModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const dialogRef = useDialogA11y<HTMLDivElement>(onClose);
+
   const { data: assetResults } = useQuery({
     queryKey: ["asset-search", assetSearch],
     queryFn: () =>
@@ -443,9 +451,12 @@ function CreatePlanModal({
       />
 
       <div
+        ref={dialogRef}
         role="dialog"
+        aria-modal="true"
         aria-label="Create maintenance plan"
-        className="relative flex w-full max-w-md flex-col gap-4 rounded-[--radius-panel] border border-line bg-surface p-5 shadow-[--shadow-pop]"
+        tabIndex={-1}
+        className="relative flex w-full max-w-md flex-col gap-4 rounded-[--radius-panel] border border-line bg-surface p-5 shadow-[--shadow-pop] focus:outline-none"
       >
         <div className="flex items-start justify-between gap-3">
           <h2 className="text-[15px] font-semibold tracking-[-0.01em] text-ink">
